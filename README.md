@@ -11,6 +11,8 @@ password: word123123
 endpoint: mvmc.local
 ```
 
+Please execute "bundle install" after the clone
+
 The ruby client manages the following commands
 ```
 `mvmc help` will print help about this command
@@ -18,3 +20,11 @@ The ruby client manages the following commands
 `mvmc destroy` destroy current vm associated to this project
 `mvmc ssh` ssh into current vm
 `mvmc projects` list projects for current user
+
+## Contributing
+
+1. Fork it.
+2. Create your feature branch (`git checkout -b my-new-feature`).
+3. Commit your changes (`git commit -am 'Add some feature'`).
+4. Push to the branch (`git push origin my-new-feature`).
+5. Create new Pull Request.
