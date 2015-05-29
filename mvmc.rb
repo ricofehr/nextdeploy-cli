@@ -108,7 +108,7 @@ class Mvmc < Thor
       exit
     end
     
-    %x{ssh modem@#{@vm[:floating_ip]}}
+    exec "ssh modem@#{@vm[:floating_ip]}"
   end
 
 
