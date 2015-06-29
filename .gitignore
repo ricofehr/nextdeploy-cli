@@ -9,6 +9,9 @@
 /test/version_tmp/
 /tmp/
 
+## dmg build wrapper folder
+/wrapper
+
 ## Specific to RubyMotion:
 .dat*
 .repl_history
