@@ -2,7 +2,7 @@
 
 cli commands application for [mvmc project](https://github.com/ricofehr/mvmc)
 
-You can download dmg package file [here](http://dmg.mvmc.publicis-modem.fr/)
+You can download dmg package file [here](http://dmg.mvmc.services-pm.fr/)
 
 A client developed in Ruby allows communication with the rest api via the command line. 
 A small configuration file is related to the script and must contain the email / password of the user.
