@@ -1,6 +1,8 @@
 # mvmc-cli
 
-cli commands application for mvmc project (repo here: https://github.com/ricofehr/mvmc)
+cli commands application for [mvmc project](https://github.com/ricofehr/mvmc)
+
+You can download dmg package file [here](http://dmg.mvmc.publicis-modem.fr/)
 
 A client developed in Ruby allows communication with the rest api via the command line. 
 A small configuration file is related to the script and must contain the email / password of the user.
@@ -20,6 +22,25 @@ The ruby client manages the following commands
 `mvmc destroy` destroy current vm associated to this project
 `mvmc ssh` ssh into current vm
 `mvmc projects` list projects for current user
+```
+
+## Build dmg package
+1. Install 7z command
+```
+brew install p7zip
+```
+2. Create wrapper folder (at the same level than mvmc.rb)
+```
+mkdir wrapper
+```
+3. Download wrapper into this folder
+```
+cd wrapper && wget https://www.libgosu.org/downloads/gosu-mac-wrapper-0.7.44.tar.gz 
+```
+4. Execute the rake command
+```
+rake package:osx:app:dmg
+```
 
 ## Contributing
 
