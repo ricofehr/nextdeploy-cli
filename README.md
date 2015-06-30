@@ -22,24 +22,8 @@ The ruby client manages the following commands
 `mvmc destroy` destroy current vm associated to this project
 `mvmc ssh` ssh into current vm
 `mvmc projects` list projects for current user
-```
-
-## Build dmg package
-1. Install 7z command
-```
-brew install p7zip
-```
-2. Create wrapper folder (at the same level than mvmc.rb)
-```
-mkdir wrapper
-```
-3. Download wrapper into this folder
-```
-cd wrapper && wget https://www.libgosu.org/downloads/gosu-mac-wrapper-0.7.44.tar.gz 
-```
-4. Execute the rake command
-```
-rake package:osx:app:dmg
+`mvmc clone [project-name]` clone project in current folder
+`mvmc config [endpoint] [username] [password]` get/set properties settings for mvmc
 ```
 
 ## Contributing
