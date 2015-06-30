@@ -20,6 +20,7 @@ class Mvmc < Thor
   #   `mvmc destroy` destroy current vm associated to this project
   #   `mvmc ssh` ssh into current vm
   #   `mvmc projects` list projects
+  #   'mvmc config' get current configuration and set properties
   #
   #   > $ mvmc up
   # LONGDESC
@@ -36,7 +37,10 @@ class Mvmc < Thor
       exit
     end
 
-    launch_req = { vm: { project_id: @project[:id], flavor_id: 1, user_id: @user[:id], systemimage_id: 1, commit_id: commitid } }
+    # get well systemimage
+    system = @systems.select { |s| s[:systemimagetype] == @project[:systemimagetype] }[0]
+    # prepare post request
+    launch_req = { vm: { project_id: @project[:id], vmsize_id: @project[:vmsizes][0], user_id: @user[:id], systemimage_id: system[:id], commit_id: commitid } }
     
     response = @conn.post do |req|
       req.url "/api/v1/vms"
@@ -71,14 +75,15 @@ class Mvmc < Thor
     init
 
     if @vms.empty?
-      puts "No vms for #{@user[:email]}"
-      return
+      error("No vms for #{@user[:email]}")
     end
 
     @vms.each do |vm|
       project = @projects.select { |project| project[:id] == vm[:project] }
-
-      puts "Project #{project[0][:name]}, Commit #{vm[:commit]}"
+      status = "RUNNING"
+      status = "SETUP" if vm[:status] == 0
+      status = "ERROR" if vm[:status] == 2
+      puts "#{project[0][:name]}, #{vm[:commit].gsub(/^[0-9]+-/, '')[0,16]}, #{status}"
     end
   end
 
@@ -89,12 +94,34 @@ class Mvmc < Thor
     init
 
     if @projects.empty?
-      puts "No projects for #{@user[:email]}"
-      return
+      error("No projects for #{@user[:email]}")
     end
 
     @projects.sort_by! { |project| project[:name] }
     @projects.each { |project| puts "Project #{project[:name]}: git clone git@#{project[:gitpath]}" }
+  end
+
+  # Clone a project by his name
+  #
+  desc "clone [project-name]", "clone project in current folder"
+  def clone(projectname=nil)
+    init
+
+    if projectname == nil
+      error("Argument projectname is missing")
+    end
+
+    if @projects.empty?
+      error("No projects for #{@user[:email]}")
+    end
+
+    # select project following parameter
+    proj = @projects.select { |p| p[:name] == projectname }
+    # return if parameter is invalid
+    error("Project #{projectname} not found") if !proj || proj.empty?
+    # else clone the project
+    @project = proj[0]
+    exec "git clone git@#{@project[:gitpath]}"
   end
 
   # Ssh into remote vm
@@ -104,13 +131,41 @@ class Mvmc < Thor
     init
 
     if ! @vm
-      warn("No vm for commit #{commitid}")
-      exit
+      error("No vm for commit #{commitid}")
     end
     
     exec "ssh modem@#{@vm[:floating_ip]}"
   end
 
+  # Get / set config for mvmc
+  #
+  desc "config [endpoint] [username] [password]", "get/set properties settings for mvmc"
+  def config(endp=nil, username=nil, pass=nil)
+    # get actual settings with disable error log
+    @nolog = true
+    init_properties
+    @nolog = nil
+
+    @endpoint = endp if endp
+    @email = username if username
+    @password = pass if pass
+    
+    # write new setting file
+    if endp || username || pass
+      open(ENV['HOME']+'/.mvmc.conf', 'w') do |f|
+        f << "email: #{@email}\n"
+        f << "password: #{@password}\n"
+        f << "endpoint: #{@endpoint}\n"  
+      end
+    end
+
+    # confirm this new settings
+    init_properties
+
+    puts "Username: #{@email}"
+    puts "Password: #{@password}"
+    puts "Endpoint: #{@endpoint}"
+  end
 
   no_commands do
     
@@ -122,6 +177,7 @@ class Mvmc < Thor
       token
       init_brands
       init_frameworks
+      init_systems
       get_project
       get_vm
     end
@@ -137,6 +193,8 @@ class Mvmc < Thor
       # Open setting file
       if File.exists?('mvmc.conf')
         fp = File.open('mvmc.conf', 'r')
+      elsif File.exists?(ENV['HOME']+'/.mvmc.conf')
+        fp = File.open(ENV['HOME']+'/.mvmc.conf', 'r')
       else
         if ! File.exists?('/etc/mvmc.conf')
           error('no mvmc.conf or /etc/mvmc.conf')
@@ -241,7 +299,7 @@ class Mvmc < Thor
         req.headers = rest_headers
       end
 
-      if response.body == "null"
+      if response.body == "null" || !json(response.body)[:vms]
         @vm = {}
         return
       end
@@ -374,6 +432,19 @@ class Mvmc < Thor
       @frameworks = json(response.body)[:frameworks]
     end
 
+    # Get all systemimages properties
+    #
+    # @params [Array[Integer]] id array
+    # No return
+    def init_systems
+      response = @conn.get do |req|
+        req.url "/api/v1/systemimages"
+        req.headers = rest_headers
+      end
+
+      @systems = json(response.body)[:systemimages]
+    end
+
     # Helper function for parse json call
     #
     # @param body [String] the json on input
@@ -396,6 +467,7 @@ class Mvmc < Thor
 
     # Puts errors on the output
     def error(msg)
+      return if @nolog
       puts msg
       exit 5
     end
