@@ -9,8 +9,8 @@
 /test/version_tmp/
 /tmp/
 
-## dmg build wrapper folder
-/wrapper
+## install log
+install.log
 
 ## Specific to RubyMotion:
 .dat*

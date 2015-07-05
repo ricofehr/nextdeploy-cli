@@ -1,19 +1,13 @@
 source 'https://rubygems.org'
 
 # thor gem
-gem 'thor', '0.14.6'
+gem 'thor', '~> 0.19.1'
 
 # json gem
-gem 'json'
+gem 'json', '~> 1.7.7'
 
 # activesupport gem
 gem 'activesupport'
 
 # faraday restful library
 gem 'faraday'
-
-# releasy gem for build dmg package
-gem 'releasy'
-
-#yard for document code
-#gem 'yard'
