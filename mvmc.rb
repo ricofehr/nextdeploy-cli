@@ -98,7 +98,7 @@ class Mvmc < Thor
     end
 
     @projects.sort_by! { |project| project[:name] }
-    @projects.each { |project| puts "Project #{project[:name]}: git clone git@#{project[:gitpath]}" }
+    @projects.each { |project| puts "#{project[:name]}" }
   end
 
   # Clone a project by his name

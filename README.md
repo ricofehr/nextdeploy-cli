@@ -2,18 +2,23 @@
 
 cli commands application for [mvmc project](https://github.com/ricofehr/mvmc)
 
-You can download dmg package file [here](http://dmg.mvmc.services-pm.fr/)
-
 A client developed in Ruby allows communication with the rest api via the command line. 
+
+## Settings file
+
 A small configuration file is related to the script and must contain the email / password of the user.
 An example of /etc/mvmc.conf
 ```
-email: userl@os.mvmc
+email: userp@os.mvmc
 password: word123123
 endpoint: mvmc.local
 ```
 
-Please execute "bundle install" after the clone
+## Install
+
+Please execute "install.sh" bash script.
+
+## Commands
 
 The ruby client manages the following commands
 ```
