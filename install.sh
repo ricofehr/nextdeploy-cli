@@ -10,6 +10,10 @@ install-cli() {
     whereis gem || sudo apt-get install -y --force-yes ruby rubygems
   fi
 
+  if [[ -f /usr/bin/sw_vers ]]; then
+    install_xcode_osx
+  fi
+
   sudo gem install bundler >install.log 2>&1
   bundle install >install.log 2>&1
   chmod +x mvmc.rb
@@ -34,6 +38,22 @@ end-msg() {
   echo "Default settings"
   mvmc config
   echo "You can change default values with: mvmc config [endpoint] [email] [password]"
+}
+
+# Cmdline xcode tools install
+install_xcode_osx() {
+  if [[ ! -d /Library/Developer/CommandLineTools ]]; then
+    echo "CommandLineTools Installation ..."
+    /bin/bash -c 'xcode-select --install'
+    #wait install is finish
+    while [[ ! -d /Library/Developer/CommandLineTools ]]; do 
+      echo "wait 5s ...."
+      sleep 5
+    done
+  fi
+  
+  sudo /bin/bash -c 'xcode-select -switch /Library/Developer/CommandLineTools'
+  (($?!=0)) && echo 'Xcode CommandLineTools has failed'
 }
 
 install-cli
