@@ -14,8 +14,8 @@ install-cli() {
     install_xcode_osx
   fi
 
-  sudo gem install bundler >install.log 2>&1
-  bundle install >install.log 2>&1
+  gem install bundler >install.log 2>&1
+  bundle install >>install.log 2>&1
   chmod +x mvmc.rb
   if [[ -d /usr/local/bin ]]; then
     sudo cp mvmc.rb /usr/bin/mvmc
