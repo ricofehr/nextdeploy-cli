@@ -46,12 +46,12 @@ install_xcode_osx() {
     echo "CommandLineTools Installation ..."
     /bin/bash -c 'xcode-select --install'
     #wait install is finish
-    while [[ ! -d /Library/Developer/CommandLineTools ]]; do 
+    while [[ ! -d /Library/Developer/CommandLineTools ]]; do
       echo "wait 5s ...."
       sleep 5
     done
   fi
-  
+
   sudo /bin/bash -c 'xcode-select -switch /Library/Developer/CommandLineTools'
   (($?!=0)) && echo 'Xcode CommandLineTools has failed'
 }
