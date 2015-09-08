@@ -41,7 +41,7 @@ class Mvmc < Thor
     system = @systems.select { |s| s[:systemimagetype] == @project[:systemimagetype] }[0]
     # prepare post request
     launch_req = { vm: { project_id: @project[:id], vmsize_id: @project[:vmsizes][0], user_id: @user[:id], systemimage_id: system[:id], commit_id: commitid } }
-    
+
     response = @conn.post do |req|
       req.url "/api/v1/vms"
       req.headers = rest_headers
@@ -133,7 +133,7 @@ class Mvmc < Thor
     if ! @vm
       error("No vm for commit #{commitid}")
     end
-    
+
     exec "ssh modem@#{@vm[:floating_ip]}"
   end
 
@@ -149,13 +149,13 @@ class Mvmc < Thor
     @endpoint = endp if endp
     @email = username if username
     @password = pass if pass
-    
+
     # write new setting file
     if endp || username || pass
       open(ENV['HOME']+'/.mvmc.conf', 'w') do |f|
         f << "email: #{@email}\n"
         f << "password: #{@password}\n"
-        f << "endpoint: #{@endpoint}\n"  
+        f << "endpoint: #{@endpoint}\n"
       end
     end
 
@@ -168,7 +168,7 @@ class Mvmc < Thor
   end
 
   no_commands do
-    
+
     # Init datas
     #
     def init
@@ -261,7 +261,7 @@ class Mvmc < Thor
     # @return [Array[String]] json output for a project
     def get_project
       gitp = gitpath
-      
+
       # if we are not into git project, return
       if gitp.empty?
         return
@@ -280,7 +280,7 @@ class Mvmc < Thor
       @project = json(response.body)[:project]
     end
 
-    # get he vm for current commit 
+    # get he vm for current commit
     #
     # No params
     # @return [Array[String]] json output for a vm
@@ -376,7 +376,7 @@ class Mvmc < Thor
     # No return
     def init_vms(vm_ids)
       @vms = []
-      
+
       vm_ids.each do |vm_id|
         response = @conn.get do |req|
           req.url "/api/v1/vms/#{vm_id}"

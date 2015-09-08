@@ -2,7 +2,7 @@
 
 cli commands application for [mvmc project](https://github.com/ricofehr/mvmc)
 
-A client developed in Ruby allows communication with the rest api via the command line. 
+A client developed in Ruby allows communication with the rest api via the command line.
 
 ## Settings file
 
