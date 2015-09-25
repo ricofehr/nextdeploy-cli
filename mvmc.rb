@@ -51,6 +51,40 @@ class Mvmc < Thor
     json(response.body)[:vm]
   end
 
+  # Launch a setted commit into a new vm on mvmc cloud
+  #
+  desc "launch [projectname] [branch] [commit]", "launch [commit] (default is head) on the [branch] (default is master) for [projectname] into remote mvmc"
+  def launch(projectname=nil, branch='master', commit='HEAD')
+    init
+
+    if projectname == nil
+      error("Argument projectname is missing")
+    end
+
+    if @projects.empty?
+      error("No projects for #{@user[:email]}")
+    end
+
+    # select project following parameter
+    proj = @projects.select { |p| p[:name] == projectname }
+    # return if parameter is invalid
+    error("Project #{projectname} not found") if !proj || proj.empty?
+    @project = proj[0]
+    
+    # get well systemimage
+    system = @systems.select { |s| s[:systemimagetype] == @project[:systemimagetype] }[0]
+    # prepare post request
+    launch_req = { vm: { project_id: @project[:id], vmsize_id: @project[:vmsizes][0], user_id: @user[:id], systemimage_id: system[:id], commit_id: "#{@project[:id]}-#{branch}-#{commit}" } }
+    
+    response = @conn.post do |req|
+      req.url "/api/v1/vms"
+      req.headers = rest_headers
+      req.body = launch_req.to_json
+    end
+
+    json(response.body)[:vm]
+  end
+
   # Destroy current vm
   #
   desc "destroy", "destroy current vm"
@@ -103,7 +137,7 @@ class Mvmc < Thor
 
   # Clone a project by his name
   #
-  desc "clone [project-name]", "clone project in current folder"
+  desc "clone [projectname]", "clone project in current folder"
   def clone(projectname=nil)
     init
 
@@ -295,11 +329,11 @@ class Mvmc < Thor
       commit = commitid
 
       response = @conn.get do |req|
-        req.url "/api/v1/vms/user/#{@user[:id]}/#{commit}"
+        req.url "/api/v1/vms/user/#{@user[:id]}/#{URI::encode(commit)}"
         req.headers = rest_headers
       end
 
-      if response.body == "null" || !json(response.body)[:vms]
+      if response.body == "null" || response.status != 200 || !json(response.body)[:vms]
         @vm = {}
         return
       end
