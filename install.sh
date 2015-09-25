@@ -10,6 +10,12 @@ install-cli() {
     whereis gem || sudo apt-get install -y --force-yes ruby rubygems
   fi
 
+  # fedora, install ruby package if needed
+  if [[ -f /etc/fedora_release ]]; then
+    whereis gem || sudo dnf install -y ruby rubygems
+  fi
+
+  # for macos, install xcode
   if [[ -f /usr/bin/sw_vers ]]; then
     install_xcode_osx
   fi
@@ -18,7 +24,7 @@ install-cli() {
   bundle install >>install.log 2>&1
   chmod +x mvmc.rb
   if [[ -d /usr/local/bin ]]; then
-    sudo cp mvmc.rb /usr/bin/mvmc
+    sudo cp mvmc.rb /usr/local/bin/mvmc
   else
     sudo cp mvmc.rb /usr/bin/mvmc
   fi
