@@ -5,27 +5,9 @@ require 'faraday'
 require 'active_support'
 require 'active_support/core_ext'
 require 'uri'
+require 'net/ftp'
 
 class Mvmc < Thor
-  # desc "mvmc h", "display help"
-  # def h
-  # puts <<-LONGDESC
-  #   This client communicates with mvmc remote services. It needs a configuration files "mvmc.conf" in current path or in /etc/mvmc.conf.
-  #   This file must include 2 lines with mvmc credentials like this:
-  #   email: user@mvmc-openstack.local
-  #   password: wordpass
-  #
-  #   `mvmc help` will print help about this command
-  #   `mvmc up` launch current commit into vm
-  #   `mvmc destroy` destroy current vm associated to this project
-  #   `mvmc ssh` ssh into current vm
-  #   `mvmc projects` list projects
-  #   'mvmc config' get current configuration and set properties
-  #
-  #   > $ mvmc up
-  # LONGDESC
-  # end
-
   # Launch current commit into a new vms on mvmc cloud
   #
   desc "up", "launch current commit to remote mvmc"
@@ -37,7 +19,7 @@ class Mvmc < Thor
       exit
     end
 
-    # get well systemimage
+    # get systemimage
     system = @systems.select { |s| s[:systemimagetype] == @project[:systemimagetype] }[0]
     # prepare post request
     launch_req = { vm: { project_id: @project[:id], vmsize_id: @project[:vmsizes][0], user_id: @user[:id], systemimage_id: system[:id], commit_id: commitid } }
@@ -70,12 +52,12 @@ class Mvmc < Thor
     # return if parameter is invalid
     error("Project #{projectname} not found") if !proj || proj.empty?
     @project = proj[0]
-    
+
     # get well systemimage
     system = @systems.select { |s| s[:systemimagetype] == @project[:systemimagetype] }[0]
     # prepare post request
     launch_req = { vm: { project_id: @project[:id], vmsize_id: @project[:vmsizes][0], user_id: @user[:id], systemimage_id: system[:id], commit_id: "#{@project[:id]}-#{branch}-#{commit}" } }
-    
+
     response = @conn.post do |req|
       req.url "/api/v1/vms"
       req.headers = rest_headers
@@ -115,8 +97,8 @@ class Mvmc < Thor
     @vms.each do |vm|
       project = @projects.select { |project| project[:id] == vm[:project] }
       status = "RUNNING"
-      status = "SETUP" if vm[:status] == 0
-      status = "ERROR" if vm[:status] == 2
+      status = "SETUP" if vm[:status] < 0
+      status = "ERROR" if vm[:status] == 1
       puts "#{project[0][:name]}, #{vm[:commit].gsub(/^[0-9]+-/, '')[0,16]}, #{status}"
     end
   end
@@ -171,6 +153,127 @@ class Mvmc < Thor
     exec "ssh modem@#{@vm[:floating_ip]}"
   end
 
+  # Upload an asset archive or a sql/mongo dump onto ftp repository dedicated to project
+  #
+  desc "putftp assets|dump [project] [file]", "putftp an assets archive [file] or a dump [file] for the [project]"
+  def putftp(typefile=nil, projectname=nil, file=nil)
+    init
+
+    if typefile == nil
+      error("You must provide type of file to push: assets or dump")
+    end
+
+    if projectname == nil
+      error("Argument projectname is missing")
+    end
+
+    if file == nil
+      error("File to push is missing")
+    end
+
+    if @projects.empty?
+      error("No projects for #{@user[:email]}")
+    end
+
+    # select project following parameter
+    proj = @projects.select { |p| p[:name] == projectname }
+    # return if parameter is invalid
+    error("Project #{projectname} not found") if !proj || proj.empty?
+    @project = proj[0]
+
+    if typefile == 'assets'
+      ftp_filename = 'assets.tar.gz'
+    else
+      ftp_filename = 'dump.sql.gz'
+    end
+
+    login_ftp = @project[:gitpath].gsub(/^.*\//, '')
+    (@project[:password].empty?) ? (password_ftp = 'mvmc') : (password_ftp = @project[:password])
+
+    # upload files
+    ftp_file = File.new(file)
+    error("File #{file} not found") unless File.exist?(file)
+    Net::FTP.open(@ftpendpoint, login_ftp, password_ftp) do |ftp|
+      ftp.putbinaryfile(ftp_file, "#{typefile}/#{ftp_filename}")
+    end
+
+  end
+
+  # Download an asset archive or a sql/mongo dump from ftp repository dedicated to project
+  #
+  desc "getftp assets|dump [project]", "get an assets archive or a dump for the [project]"
+  def getftp(typefile=nil, projectname=nil, file=nil)
+    init
+
+    if typefile == nil
+      error("You must provide type of file to push: assets or dump")
+    end
+
+    if projectname == nil
+      error("Argument projectname is missing")
+    end
+
+    if @projects.empty?
+      error("No projects for #{@user[:email]}")
+    end
+
+    # select project following parameter
+    proj = @projects.select { |p| p[:name] == projectname }
+    # return if parameter is invalid
+    error("Project #{projectname} not found") if !proj || proj.empty?
+    @project = proj[0]
+
+    if typefile == 'assets'
+      ftp_filename = 'assets.tar.gz'
+    else
+      ftp_filename = 'dump.sql.gz'
+    end
+
+    login_ftp = @project[:gitpath].gsub(/^.*\//, '')
+    (@project[:password].empty?) ? (password_ftp = 'mvmc') : (password_ftp = @project[:password])
+
+    Net::FTP.open(@ftpendpoint, login_ftp, password_ftp) do |ftp|
+      ftp.chdir("#{typefile}")
+      ftp.passive = true
+      ftp.getbinaryfile("#{ftp_filename}", "#{ftp_filename}")
+    end
+
+  end
+
+  # List asset archive or a sql/mongo dump from ftp repository dedicated to project
+  #
+  desc "listftp assets|dump [project]", "list assets archive or a dump for the [project]"
+  def listftp(typefile=nil, projectname=nil, file=nil)
+    init
+
+    if typefile == nil
+      error("You must provide type of file to push: assets or dump")
+    end
+
+    if projectname == nil
+      error("Argument projectname is missing")
+    end
+
+    if @projects.empty?
+      error("No projects for #{@user[:email]}")
+    end
+
+    # select project following parameter
+    proj = @projects.select { |p| p[:name] == projectname }
+    # return if parameter is invalid
+    error("Project #{projectname} not found") if !proj || proj.empty?
+    @project = proj[0]
+
+    login_ftp = @project[:gitpath].gsub(/^.*\//, '')
+    (@project[:password].empty?) ? (password_ftp = 'mvmc') : (password_ftp = @project[:password])
+
+    # list files
+    Net::FTP.open(@ftpendpoint, login_ftp, password_ftp) do |ftp|
+      puts ftp.list("#{typefile}/")
+    end
+
+  end
+
   # Get / set config for mvmc
   #
   desc "config [endpoint] [username] [password]", "get/set properties settings for mvmc"
@@ -199,6 +302,13 @@ class Mvmc < Thor
     puts "Username: #{@email}"
     puts "Password: #{@password}"
     puts "Endpoint: #{@endpoint}"
+  end
+
+  # Execute git command
+  #
+  desc "git [cmd]", "Executes a git command"
+  def git(cmd=nil)
+    exec "git #{cmd}"
   end
 
   no_commands do
@@ -248,6 +358,7 @@ class Mvmc < Thor
 
         if (line.match(/^endpoint:.*$/))
           @endpoint = line.gsub('endpoint:', '').squish
+          @ftpendpoint = "f.#{@endpoint}"
         end
       end
       fp.close
