@@ -22,13 +22,19 @@ Please execute "install.sh" bash script.
 
 The ruby client manages the following commands
 ```
-`mvmc help` will print help about this command
-`mvmc up` launch current commit into vm
-`mvmc destroy` destroy current vm associated to this project
-`mvmc ssh` ssh into current vm
-`mvmc projects` list projects for current user
-`mvmc clone [project-name]` clone project in current folder
-`mvmc config [endpoint] [username] [password]` get/set properties settings for mvmc
+`  mvmc clone [projectname]                      # clone project in current folder
+`  mvmc config [endpoint] [username] [password]  # get/set properties settings for mvmc
+`  mvmc destroy                                  # destroy current vm
+`  mvmc getftp assets|dump [project]             # get an assets archive or a dump for the [project]
+`  mvmc git [cmd]                                # Executes a git command
+`  mvmc help [COMMAND]                           # Describe available commands or one specific command
+`  mvmc launch [projectname] [branch] [commit]   # launch [commit] (default is head) on the [branch] (default is master) for [projectname] into remote mvmc
+`  mvmc list                                     # list launched vms for current user
+`  mvmc listftp assets|dump [project]            # list assets archive or a dump for the [project]
+`  mvmc projects                                 # list projects for current user
+`  mvmc putftp assets|dump [project] [file]      # putftp an assets archive [file] or a dump [file] for the [project]
+`  mvmc ssh                                      # ssh into remote vm
+`  mvmc up                                       # launch current commit to remote mvmc
 ```
 
 ## Contributing
