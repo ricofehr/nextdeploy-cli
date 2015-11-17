@@ -7,10 +7,10 @@ require 'active_support/core_ext'
 require 'uri'
 require 'net/ftp'
 
-class Mvmc < Thor
-  # Launch current commit into a new vms on mvmc cloud
+class Nextdeploy < Thor
+  # Launch current commit into a new vms on nextdeploy cloud
   #
-  desc "up", "launch current commit to remote mvmc"
+  desc "up", "launch current commit to remote nextdeploy"
   def up
     init
 
@@ -33,9 +33,9 @@ class Mvmc < Thor
     json(response.body)[:vm]
   end
 
-  # Launch a setted commit into a new vm on mvmc cloud
+  # Launch a setted commit into a new vm on nextdeploy cloud
   #
-  desc "launch [projectname] [branch] [commit]", "launch [commit] (default is head) on the [branch] (default is master) for [projectname] into remote mvmc"
+  desc "launch [projectname] [branch] [commit]", "launch [commit] (default is head) on the [branch] (default is master) for [projectname] into remote nextdeploy"
   def launch(projectname=nil, branch='master', commit='HEAD')
     init
 
@@ -188,7 +188,7 @@ class Mvmc < Thor
     end
 
     login_ftp = @project[:gitpath].gsub(/^.*\//, '')
-    (@project[:password].empty?) ? (password_ftp = 'mvmc') : (password_ftp = @project[:password])
+    (@project[:password].empty?) ? (password_ftp = 'nextdeploy') : (password_ftp = @project[:password])
 
     # upload files
     ftp_file = File.new(file)
@@ -230,7 +230,7 @@ class Mvmc < Thor
     end
 
     login_ftp = @project[:gitpath].gsub(/^.*\//, '')
-    (@project[:password].empty?) ? (password_ftp = 'mvmc') : (password_ftp = @project[:password])
+    (@project[:password].empty?) ? (password_ftp = 'nextdeploy') : (password_ftp = @project[:password])
 
     Net::FTP.open(@ftpendpoint, login_ftp, password_ftp) do |ftp|
       ftp.chdir("#{typefile}")
@@ -265,7 +265,7 @@ class Mvmc < Thor
     @project = proj[0]
 
     login_ftp = @project[:gitpath].gsub(/^.*\//, '')
-    (@project[:password].empty?) ? (password_ftp = 'mvmc') : (password_ftp = @project[:password])
+    (@project[:password].empty?) ? (password_ftp = 'nextdeploy') : (password_ftp = @project[:password])
 
     # list files
     Net::FTP.open(@ftpendpoint, login_ftp, password_ftp) do |ftp|
@@ -274,9 +274,9 @@ class Mvmc < Thor
 
   end
 
-  # Get / set config for mvmc
+  # Get / set config for nextdeploy
   #
-  desc "config [endpoint] [username] [password]", "get/set properties settings for mvmc"
+  desc "config [endpoint] [username] [password]", "get/set properties settings for nextdeploy"
   def config(endp=nil, username=nil, pass=nil)
     # get actual settings with disable error log
     @nolog = true
@@ -289,7 +289,7 @@ class Mvmc < Thor
 
     # write new setting file
     if endp || username || pass
-      open(ENV['HOME']+'/.mvmc.conf', 'w') do |f|
+      open(ENV['HOME']+'/.nextdeploy.conf', 'w') do |f|
         f << "email: #{@email}\n"
         f << "password: #{@password}\n"
         f << "endpoint: #{@endpoint}\n"
@@ -335,15 +335,15 @@ class Mvmc < Thor
       @endpoint = nil
 
       # Open setting file
-      if File.exists?('mvmc.conf')
-        fp = File.open('mvmc.conf', 'r')
-      elsif File.exists?(ENV['HOME']+'/.mvmc.conf')
-        fp = File.open(ENV['HOME']+'/.mvmc.conf', 'r')
+      if File.exists?('nextdeploy.conf')
+        fp = File.open('nextdeploy.conf', 'r')
+      elsif File.exists?(ENV['HOME']+'/.nextdeploy.conf')
+        fp = File.open(ENV['HOME']+'/.nextdeploy.conf', 'r')
       else
-        if ! File.exists?('/etc/mvmc.conf')
-          error('no mvmc.conf or /etc/mvmc.conf')
+        if ! File.exists?('/etc/nextdeploy.conf')
+          error('no nextdeploy.conf or /etc/nextdeploy.conf')
         end
-        fp = File.open('/etc/mvmc.conf', 'r')
+        fp = File.open('/etc/nextdeploy.conf', 'r')
       end
 
       # Get properties
@@ -363,9 +363,9 @@ class Mvmc < Thor
       end
       fp.close
 
-      error("no email into mvmc.conf") if @email == nil
-      error("no password into mvmc.conf") if @password == nil
-      error("no endpoint into mvmc.conf") if @endpoint == nil
+      error("no email into nextdeploy.conf") if @email == nil
+      error("no password into nextdeploy.conf") if @password == nil
+      error("no endpoint into nextdeploy.conf") if @endpoint == nil
     end
 
     # Get current git url
@@ -392,7 +392,7 @@ class Mvmc < Thor
       %x{git branch | grep "*" | sed "s;* ;;"}.squish
     end
 
-    # Get unique id (for the model of mvmc) for current commit
+    # Get unique id (for the model of nextdeploy) for current commit
     #
     # No params
     # @return [String] id of the commit
@@ -455,7 +455,7 @@ class Mvmc < Thor
     # Init rest connection
     #
     def init_conn
-      @conn = Faraday.new(:url => "http://#{@endpoint}") do |faraday|
+      @conn = Faraday.new(:url => "https://#{@endpoint}", ssl: {verify:false}) do |faraday|
         faraday.adapter  Faraday.default_adapter
         faraday.port = 80
       end

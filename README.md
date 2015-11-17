@@ -1,17 +1,17 @@
-# mvmc-cli
+# nextdeploy-cli
 
-cli commands application for [mvmc project](https://github.com/ricofehr/mvmc)
+cli commands application for [nextdeploy project](https://github.com/ricofehr/nextdeploy)
 
 A client developed in Ruby allows communication with the rest api via the command line.
 
 ## Settings file
 
 A small configuration file is related to the script and must contain the email / password of the user.
-An example of /etc/mvmc.conf
+An example of /etc/nextdeploy.conf
 ```
-email: userp@os.mvmc
+email: userp@os.nextdeploy
 password: word123123
-endpoint: mvmc.local
+endpoint: nextdeploy.local
 ```
 
 ## Install
@@ -22,19 +22,19 @@ Please execute "install.sh" bash script.
 
 The ruby client manages the following commands
 ```
-`  mvmc clone [projectname]                      # clone project in current folder
-`  mvmc config [endpoint] [username] [password]  # get/set properties settings for mvmc
-`  mvmc destroy                                  # destroy current vm
-`  mvmc getftp assets|dump [project]             # get an assets archive or a dump for the [project]
-`  mvmc git [cmd]                                # Executes a git command
-`  mvmc help [COMMAND]                           # Describe available commands or one specific command
-`  mvmc launch [projectname] [branch] [commit]   # launch [commit] (default is head) on the [branch] (default is master) for [projectname] into remote mvmc
-`  mvmc list                                     # list launched vms for current user
-`  mvmc listftp assets|dump [project]            # list assets archive or a dump for the [project]
-`  mvmc projects                                 # list projects for current user
-`  mvmc putftp assets|dump [project] [file]      # putftp an assets archive [file] or a dump [file] for the [project]
-`  mvmc ssh                                      # ssh into remote vm
-`  mvmc up                                       # launch current commit to remote mvmc
+`  ndeploy clone [projectname]                         # clone project in current folder
+`  ndeploy config [endpoint] [username] [password]     # get/set properties settings for nextdeploy
+`  ndeploy destroy                                     # destroy current vm
+`  ndeploy getftp assets|dump [project]                # get an assets archive or a dump for the [project]
+`  ndeploy git [cmd]                                   # Executes a git command
+`  ndeploy help [COMMAND]                              # Describe available commands or one specific command
+`  ndeploy launch [projectname] [branch] [commit]      # launch [commit] (default is head) on the [branch] (default is master) for [projectname] into remote nextdeploy platform
+`  ndeploy list                                        # list launched vms for current user
+`  ndeploy listftp assets|dump [project]               # list assets archive or a dump for the [project]
+`  ndeploy projects                                    # list projects for current user
+`  ndeploy putftp assets|dump [project] [file]         # putftp an assets archive [file] or a dump [file] for the [project]
+`  ndeploy ssh                                         # ssh into remote vm
+`  ndeploy up                                          # launch current commit to remote nextdeploy
 ```
 
 ## Contributing

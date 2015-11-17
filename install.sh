@@ -20,30 +20,36 @@ install-cli() {
     install_xcode_osx
   fi
 
-  gem install bundler >install.log 2>&1
+  sudo gem install bundler >install.log 2>&1
   bundle install >>install.log 2>&1
-  chmod +x mvmc.rb
+  chmod +x nextdeploy.rb
   if [[ -d /usr/local/bin ]]; then
-    sudo cp mvmc.rb /usr/local/bin/mvmc
+    sudo cp nextdeploy.rb /usr/local/bin/nextdeploy
+    pushd /usr/local/bin >/dev/null
+    sudo ln -s nextdeploy ndeploy
+    popd >/dev/null
   else
-    sudo cp mvmc.rb /usr/bin/mvmc
+    sudo cp nextdeploy.rb /usr/bin/nextdeploy
+    pushd /usr/bin >/dev/null
+    sudo ln -s nextdeploy ndeploy
+    popd >/dev/null
   fi
 }
 
 # generate default setting file and give instructions to change this ones
 default-settings() {
-  echo "endpoint: mvmc.local" > ~/.mvmc.conf
-  echo "email: userd@os.mvmc" >> ~/.mvmc.conf
-  echo "password: word123123" >> ~/.mvmc.conf
+  echo "endpoint: nextdeploy.local" > ~/.nextdeploy.conf
+  echo "email: userd@os.nextdeploy" >> ~/.nextdeploy.conf
+  echo "password: word123123" >> ~/.nextdeploy.conf
 }
 
 # msg to end install
 end-msg() {
   echo "Installation is complete"
-  mvmc
+  ndeploy
   echo "Default settings"
-  mvmc config
-  echo "You can change default values with: mvmc config [endpoint] [email] [password]"
+  ndeploy config
+  echo "You can change default values with: ndeploy config [endpoint] [email] [password]"
 }
 
 # Cmdline xcode tools install
