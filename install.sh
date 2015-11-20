@@ -8,30 +8,34 @@ install-cli() {
   # if ubuntu / debian, install ruby package if needed
   if [[ -f /etc/debian_version ]]; then
     whereis gem || sudo apt-get install -y --force-yes ruby rubygems
+    sudo apt-get install -y --force-yes ruby-dev
+    gem install bundler >install.log 2>&1
   fi
 
   # fedora, install ruby package if needed
   if [[ -f /etc/fedora_release ]]; then
     whereis gem || sudo dnf install -y ruby rubygems
+    sudo dnf install -y ruby-dev
+    gem install bundler >install.log 2>&1
   fi
 
   # for macos, install xcode
   if [[ -f /usr/bin/sw_vers ]]; then
     install_xcode_osx
+    sudo gem install bundler >install.log 2>&1
   fi
 
-  sudo gem install bundler >install.log 2>&1
   bundle install >>install.log 2>&1
   chmod +x nextdeploy.rb
   if [[ -d /usr/local/bin ]]; then
     sudo cp nextdeploy.rb /usr/local/bin/nextdeploy
     pushd /usr/local/bin >/dev/null
-    sudo ln -s nextdeploy ndeploy
+    sudo ln -sf nextdeploy ndeploy
     popd >/dev/null
   else
     sudo cp nextdeploy.rb /usr/bin/nextdeploy
     pushd /usr/bin >/dev/null
-    sudo ln -s nextdeploy ndeploy
+    sudo ln -sf nextdeploy ndeploy
     popd >/dev/null
   fi
 }

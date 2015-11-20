@@ -7,7 +7,7 @@ require 'active_support/core_ext'
 require 'uri'
 require 'net/ftp'
 
-class Nextdeploy < Thor
+class NextDeploy < Thor
   # Launch current commit into a new vms on nextdeploy cloud
   #
   desc "up", "launch current commit to remote nextdeploy"
@@ -457,7 +457,6 @@ class Nextdeploy < Thor
     def init_conn
       @conn = Faraday.new(:url => "https://#{@endpoint}", ssl: {verify:false}) do |faraday|
         faraday.adapter  Faraday.default_adapter
-        faraday.port = 80
       end
     end
 
@@ -619,4 +618,4 @@ class Nextdeploy < Thor
   end
 end
 
-Mvmc.start(ARGV)
+NextDeploy.start(ARGV)
