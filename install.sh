@@ -42,7 +42,7 @@ install-cli() {
 
 # generate default setting file and give instructions to change this ones
 default-settings() {
-  echo "endpoint: nextdeploy.local" > ~/.nextdeploy.conf
+  echo "endpoint: api.nextdeploy.local" > ~/.nextdeploy.conf
   echo "email: userd@os.nextdeploy" >> ~/.nextdeploy.conf
   echo "password: word123123" >> ~/.nextdeploy.conf
 }
