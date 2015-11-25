@@ -358,7 +358,7 @@ class NextDeploy < Thor
 
         if (line.match(/^endpoint:.*$/))
           @endpoint = line.gsub('endpoint:', '').squish
-          @ftpendpoint = "f.#{@endpoint}"
+          @ftpendpoint = "f.#{@endpoint.gsub(/api\./,'')}"
         end
       end
       fp.close
