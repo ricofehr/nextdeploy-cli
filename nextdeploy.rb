@@ -184,7 +184,12 @@ class NextDeploy < Thor
     if typefile == 'assets'
       ftp_filename = 'assets.tar.gz'
     else
-      ftp_filename = 'dump.sql.gz'
+      # mongo dump
+      if file.match(/.tar.gz$/)
+        ftp_filename = 'dump.tar.gz'
+      else
+        ftp_filename = 'dump.sql.gz'
+      end
     end
 
     login_ftp = @project[:gitpath].gsub(/^.*\//, '')
