@@ -9,7 +9,7 @@ install-cli() {
   if [[ -f /etc/debian_version ]]; then
     whereis gem || sudo apt-get install -y --force-yes ruby rubygems
     sudo apt-get install -y --force-yes ruby-dev
-    gem install bundler >install.log 2>&1
+    sudo gem install bundler >install.log 2>&1
   fi
 
   # fedora, install ruby package if needed
