@@ -97,9 +97,13 @@ class NextDeploy < Thor
     @vms.each do |vm|
       project = @projects.select { |project| project[:id] == vm[:project] }
       status = "RUNNING"
+      # put url if vm is running
+      url = ", http://#{vm[:name]}/"
+      url = "" if vm[:status] <= 1
+      # update status field
       status = "SETUP" if vm[:status] < 0
       status = "ERROR" if vm[:status] == 1
-      puts "#{project[0][:name]}, #{vm[:commit].gsub(/^[0-9]+-/, '')[0,16]}, #{status}"
+      puts "#{project[0][:name]}, #{vm[:commit].gsub(/^[0-9]+-/, '')[0,16]}, #{status}#{url}"
     end
   end
 
