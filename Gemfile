@@ -11,3 +11,4 @@ gem 'activesupport'
 
 # faraday restful library
 gem 'faraday'
+gem 'net-http-persistent'
