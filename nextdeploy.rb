@@ -5,9 +5,39 @@ require 'faraday'
 require 'active_support'
 require 'active_support/core_ext'
 require 'uri'
+require 'socket'
+require 'open-uri'
 require 'net/ftp'
 
 class NextDeploy < Thor
+  # Print current version
+  #
+  desc "version", "print current version of ndeploy"
+  def version
+    init_constants
+    puts "Version: #{@@version}"
+
+    remote_version = get_remote_version
+    if ! remote_version.eql? @@version
+      puts "A new version of ndeploy is available. We recommend to upgrade it: ndeploy upgrade"
+    else
+      puts "You have the last version of ndeploy. Your system is uptodate."
+    end
+  end
+
+  # upgrade ndeploy
+  #
+  desc "upgrade", "upgrade ndeploy with the last version"
+  def upgrade
+    init_constants
+    remote_version = get_remote_version
+    if remote_version.eql? @@version
+      puts "You have already the last version of ndeploy. No need to upgrade"
+    else
+      exec "curl –sSL http://cli.nextdeploy.io/ | bash"
+    end
+  end
+
   # Launch current commit into a new vms on nextdeploy cloud
   #
   desc "up", "launch current commit to remote nextdeploy"
@@ -142,6 +172,49 @@ class NextDeploy < Thor
     # else clone the project
     @project = proj[0]
     exec "git clone git@#{@project[:gitpath]}"
+  end
+
+  # Display sshkeys associated to current user into NextDeploy
+  #
+  desc "sshkeys", "List sshkeys actually associated to the current user"
+  def sshkeys
+    init
+
+    @ssh_keys.each { |sshkey| puts sshkey[:key] }
+  end
+
+  # Puts a ssh key for the current user into NextDeploy
+  #
+  desc "sshkey", "Put your public ssh key (id_rsa.pub) onto NextDeploy"
+  def sshkey
+    init
+
+    if ! File.exist?("#{Dir.home}/.ssh/id_rsa.pub")
+      error("No id_rsa.pub for current user")
+    end
+
+    key = open("#{Dir.home}/.ssh/id_rsa.pub").read.tr("\n", '')
+    keyname = "sshkey-#{Socket.gethostname}"
+
+    # check if this key is already associated to this user
+    @ssh_keys.each do |sshkey|
+      # normalize the two keys string and compre them.
+      # little ugly line :(
+      if key.gsub(/^ssh-rsa /, '').gsub(/ .*$/, '').eql? sshkey[:key].gsub(/^ssh-rsa /, '').gsub(/ .*$/, '')
+        error("Your current ssh key is already associated to your user")
+      end
+    end
+
+    # prepare post request
+    sshkey_req = { sshkey: { user_id: @user[:id], key: key, name: keyname } }
+
+    response = @conn.post do |req|
+      req.url "/api/v1/sshkeys"
+      req.headers = rest_headers
+      req.body = sshkey_req.to_json
+    end
+
+    sshkeys
   end
 
   # Ssh into remote vm
@@ -298,7 +371,7 @@ class NextDeploy < Thor
 
     # write new setting file
     if endp || username || pass
-      open(ENV['HOME']+'/.nextdeploy.conf', 'w') do |f|
+      open("#{Dir.home}/.nextdeploy.conf", 'w') do |f|
         f << "email: #{@email}\n"
         f << "password: #{@password}\n"
         f << "endpoint: #{@endpoint}\n"
@@ -325,14 +398,25 @@ class NextDeploy < Thor
     # Init datas
     #
     def init
+      init_constants
       init_properties
       init_conn
       token
+      init_sshkeys
+      init_vms
+      init_projects
       init_brands
       init_frameworks
       init_systems
       get_project
       get_vm
+    end
+
+    # define some constants
+    #
+    def init_constants
+      @@version = "0.10.3"
+      @@remote_cli = "http://cli.nextdeploy.io"
     end
 
     # Retrieve settings parameters
@@ -346,8 +430,8 @@ class NextDeploy < Thor
       # Open setting file
       if File.exists?('nextdeploy.conf')
         fp = File.open('nextdeploy.conf', 'r')
-      elsif File.exists?(ENV['HOME']+'/.nextdeploy.conf')
-        fp = File.open(ENV['HOME']+'/.nextdeploy.conf', 'r')
+      elsif File.exists?("#{Dir.home}/.nextdeploy.conf")
+        fp = File.open("#{Dir.home}/.nextdeploy.conf", 'r')
       else
         if ! File.exists?('/etc/nextdeploy.conf')
           error('no nextdeploy.conf or /etc/nextdeploy.conf')
@@ -375,6 +459,12 @@ class NextDeploy < Thor
       error("no email into nextdeploy.conf") if @email == nil
       error("no password into nextdeploy.conf") if @password == nil
       error("no endpoint into nextdeploy.conf") if @endpoint == nil
+    end
+
+    # get remote cli version
+    #
+    def get_remote_version
+      open("#{@@remote_cli}/LATEST").read.gsub(/.*cli-/, '').gsub(/\.tar\.gz/,'').tr("\n", '')
     end
 
     # Get current git url
@@ -465,7 +555,7 @@ class NextDeploy < Thor
     #
     def init_conn
       @conn = Faraday.new(:url => "https://#{@endpoint}", ssl: {verify:false}) do |faraday|
-        faraday.adapter  Faraday.default_adapter
+        faraday.adapter  :net_http_persistent
       end
     end
 
@@ -497,65 +587,53 @@ class NextDeploy < Thor
       end
 
       @user = json_auth[:user]
-      init_vms(@user[:vms])
-      init_projects(@user[:projects])
-      if @user[:sshkeys][0]
-        init_sshkeys(@user[:sshkeys])
-      else
-        @ssh_key = { name: 'nosshkey' }
-      end
     end
 
     # Get all projects properties
     #
-    # @params [Array[Integer]] id array
+    # No param
     # No return
-    def init_projects(project_ids)
+    def init_projects
       @projects = []
 
-      project_ids.each do |project_id|
-        response = @conn.get do |req|
-          req.url "/api/v1/projects/#{project_id}"
-          req.headers = rest_headers
-        end
-
-        @projects.push(json(response.body)[:project])
+      response = @conn.get do |req|
+        req.url "/api/v1/projects"
+        req.headers = rest_headers
       end
+
+      @projects = json(response.body)[:projects]
     end
 
     # Get all vms properties
     #
-    # @params [Array[Integer]] id array
+    # No params
     # No return
-    def init_vms(vm_ids)
+    def init_vms
       @vms = []
 
-      vm_ids.each do |vm_id|
-        response = @conn.get do |req|
-          req.url "/api/v1/vms/#{vm_id}"
-          req.headers = rest_headers
-        end
-
-        @vms.push(json(response.body)[:vm])
+      response = @conn.get do |req|
+        req.url "/api/v1/vms"
+        req.headers = rest_headers
       end
+
+      @vms = json(response.body)[:vms]
     end
 
     # Get all sshkeys properties
     #
     # @params [Array[Integer]] id array
     # No return
-    def init_sshkeys(ssh_ids)
+    def init_sshkeys
       @ssh_keys = []
+      @ssh_key = { name: 'nosshkey' }
 
-      ssh_ids.each do |ssh_id|
-        response = @conn.get do |req|
-          req.url "/api/v1/sshkeys/#{ssh_id}"
-          req.headers = rest_headers
-        end
-
-        @ssh_keys << json(response.body)[:sshkey]
-        @ssh_key = @ssh_keys.first
+      response = @conn.get do |req|
+        req.url "/api/v1/sshkeys"
+        req.headers = rest_headers
       end
+
+      @ssh_keys = json(response.body)[:sshkeys]
+      @ssh_key = @ssh_keys.first if @ssh_keys.length
     end
 
     # Get all brands properties

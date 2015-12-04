@@ -3,31 +3,39 @@
 # Install instruction for cli cmd
 # @author Eric Fehr (eric.fehr@publicis-modem.fr, @github: ricofehr)
 
+# flag who decide if it's the first install
+NEWINSTALL=1
+
 # install the cli cmd into the operating system
 install-cli() {
-  # if ubuntu / debian, install ruby package if needed
-  if [[ -f /etc/debian_version ]]; then
-    whereis gem || sudo apt-get install -y --force-yes ruby rubygems
-    sudo apt-get install -y --force-yes ruby-dev
-    sudo gem install bundler >install.log 2>&1
-  fi
+  [[ -f /usr/bin/nextdeploy ]] && NEWINSTALL=0
+  [[ -f /usr/local/bin/nextdeploy ]] && NEWINSTALL=0
 
-  # fedora, install ruby package if needed
-  if [[ -f /etc/fedora_release ]]; then
-    whereis gem || sudo dnf install -y ruby rubygems
-    sudo dnf install -y ruby-dev
-    gem install bundler >install.log 2>&1
-  fi
+  if (( NEWINSTALL == 1 )); then
+    # if ubuntu / debian, install ruby package if needed
+    if [[ -f /etc/debian_version ]]; then
+      whereis gem || sudo apt-get install -y --force-yes ruby rubygems
+      sudo apt-get install -y --force-yes ruby-dev
+      sudo gem install bundler >install.log 2>&1
+    fi
 
-  # for macos, install xcode
-  if [[ -f /usr/bin/sw_vers ]]; then
-    install_xcode_osx
-    sudo gem install bundler >install.log 2>&1
+    # fedora, install ruby package if needed
+    if [[ -f /etc/fedora_release ]]; then
+      whereis gem || sudo dnf install -y ruby rubygems
+      sudo dnf install -y ruby-dev
+      gem install bundler >install.log 2>&1
+    fi
+
+    # for macos, install xcode
+    if [[ -f /usr/bin/sw_vers ]]; then
+      install_xcode_osx
+      sudo gem install bundler >install.log 2>&1
+    fi
   fi
 
   bundle install >>install.log 2>&1
   chmod +x nextdeploy.rb
-  if [[ -d /usr/local/bin ]]; then
+  if [[ -d /usr/local/bin ]] && [[ ! -f /usr/bin/nextdeploy ]]; then
     sudo cp nextdeploy.rb /usr/local/bin/nextdeploy
     pushd /usr/local/bin >/dev/null
     sudo ln -sf nextdeploy ndeploy
@@ -49,11 +57,11 @@ default-settings() {
 
 # msg to end install
 end-msg() {
-  echo "Installation is complete"
+  echo "Installation is complete, ndeploy version $(ndeploy version)"
   ndeploy
-  echo "Default settings"
+  echo "Settings"
   ndeploy config
-  echo "You can change default values with: ndeploy config [endpoint] [email] [password]"
+  echo "You can change this values with: ndeploy config [endpoint] [email] [password]"
 }
 
 # Cmdline xcode tools install
@@ -73,5 +81,5 @@ install_xcode_osx() {
 }
 
 install-cli
-default-settings
+(( NEWINSTALL == 1 )) && default-settings
 end-msg
