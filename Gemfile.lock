@@ -3,14 +3,14 @@ GEM
   specs:
     activesupport (4.2.3)
       i18n (~> 0.7)
-      json (~> 1.7, >= 1.7.7)
+      json (~> 1.8, >= 1.8.3)
       minitest (~> 5.1)
       thread_safe (~> 0.3, >= 0.3.4)
       tzinfo (~> 1.1)
     faraday (0.9.1)
       multipart-post (>= 1.2, < 3)
     i18n (0.7.0)
-    json (1.7.7)
+    json (1.8.3)
     minitest (5.7.0)
     multipart-post (2.0.0)
     net-http-persistent (2.9.4)
@@ -25,7 +25,7 @@ PLATFORMS
 DEPENDENCIES
   activesupport
   faraday
-  json (~> 1.7.7)
+  json (~> 1.8.3)
   net-http-persistent
   thor (~> 0.19.1)
 
