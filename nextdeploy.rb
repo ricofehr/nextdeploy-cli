@@ -1,4 +1,5 @@
 #!/usr/bin/env ruby
+# encoding: utf-8
 
 require 'thor'
 require 'faraday'
@@ -34,7 +35,7 @@ class NextDeploy < Thor
     if remote_version.eql? @@version
       puts "You have already the last version of ndeploy. No need to upgrade"
     else
-      exec "curl –sSL http://cli.nextdeploy.io/ | bash"
+      exec "curl -sSL http://cli.nextdeploy.io/ | bash"
     end
   end
 
@@ -415,7 +416,7 @@ class NextDeploy < Thor
     # define some constants
     #
     def init_constants
-      @@version = "0.10.3"
+      @@version = "0.11.4"
       @@remote_cli = "http://cli.nextdeploy.io"
     end
 
