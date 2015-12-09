@@ -416,7 +416,7 @@ class NextDeploy < Thor
     # define some constants
     #
     def init_constants
-      @@version = "0.11.4"
+      @@version = "0.11.7"
       @@remote_cli = "http://cli.nextdeploy.io"
     end
 
