@@ -1,5 +1,8 @@
 #!/usr/bin/env ruby
 # encoding: utf-8
+#
+# CommandLine tool for NextDeploy project (http://nextdeploy.io)
+# @author Eric Fehr (ricofehr@nextdeploy.io, @github: ricofehr)
 
 require 'thor'
 require 'faraday'
@@ -19,10 +22,10 @@ class NextDeploy < Thor
     puts "Version: #{@@version}"
 
     remote_version = get_remote_version
-    if ! remote_version.eql? @@version
-      puts "A new version of ndeploy is available. We recommend to upgrade it: ndeploy upgrade"
-    else
+    if remote_version.eql? @@version
       puts "You have the last version of ndeploy. Your system is uptodate."
+    else
+      puts "A new version of ndeploy is available. We recommend to upgrade it: ndeploy upgrade"
     end
   end
 
@@ -45,7 +48,8 @@ class NextDeploy < Thor
   def up
     init
 
-    if ! @project
+    # ensure requirements
+    unless @project
       warn("Git repository for #{gitpath} not found, have-you already import this project ?")
       exit
     end
@@ -70,13 +74,9 @@ class NextDeploy < Thor
   def launch(projectname=nil, branch='master', commit='HEAD')
     init
 
-    if projectname == nil
-      error("Argument projectname is missing")
-    end
-
-    if @projects.empty?
-      error("No projects for #{@user[:email]}")
-    end
+    # ensure requirements
+    error("Argument projectname is missing") unless projectname
+    error("No projects for #{@user[:email]}") if @projects.empty?
 
     # select project following parameter
     proj = @projects.select { |p| p[:name] == projectname }
@@ -104,7 +104,8 @@ class NextDeploy < Thor
   def destroy
     init
 
-    if ! @vm
+    # ensure requirements
+    unless @vm
       warn("No vm for commit #{commitid}")
       exit
     end
@@ -121,9 +122,8 @@ class NextDeploy < Thor
   def list
     init
 
-    if @vms.empty?
-      error("No vms for #{@user[:email]}")
-    end
+    # ensure requirements
+    error("No vms for #{@user[:email]}") if @vms.empty?
 
     @vms.each do |vm|
       project = @projects.select { |project| project[:id] == vm[:project] }
@@ -144,9 +144,8 @@ class NextDeploy < Thor
   def projects
     init
 
-    if @projects.empty?
-      error("No projects for #{@user[:email]}")
-    end
+    # ensure requirements
+    error("No projects for #{@user[:email]}") if @projects.empty?
 
     @projects.sort_by! { |project| project[:name] }
     @projects.each { |project| puts "#{project[:name]}" }
@@ -158,13 +157,9 @@ class NextDeploy < Thor
   def clone(projectname=nil)
     init
 
-    if projectname == nil
-      error("Argument projectname is missing")
-    end
-
-    if @projects.empty?
-      error("No projects for #{@user[:email]}")
-    end
+    # ensure requirements
+    error("Argument projectname is missing") unless projectname
+    error("No projects for #{@user[:email]}") if @projects.empty?
 
     # select project following parameter
     proj = @projects.select { |p| p[:name] == projectname }
@@ -190,7 +185,7 @@ class NextDeploy < Thor
   def sshkey
     init
 
-    if ! File.exist?("#{Dir.home}/.ssh/id_rsa.pub")
+    unless File.exist?("#{Dir.home}/.ssh/id_rsa.pub")
       error("No id_rsa.pub for current user")
     end
 
@@ -200,7 +195,7 @@ class NextDeploy < Thor
     # check if this key is already associated to this user
     @ssh_keys.each do |sshkey|
       # normalize the two keys string and compre them.
-      # little ugly line :(
+      # HACK: ugly line :(
       if key.gsub(/^ssh-rsa /, '').gsub(/ .*$/, '').eql? sshkey[:key].gsub(/^ssh-rsa /, '').gsub(/ .*$/, '')
         error("Your current ssh key is already associated to your user")
       end
@@ -224,9 +219,8 @@ class NextDeploy < Thor
   def ssh
     init
 
-    if ! @vm
-      error("No vm for commit #{commitid}")
-    end
+    # ensure requirement
+    error("No vm for commit #{commitid}") unless @vm
 
     exec "ssh modem@#{@vm[:floating_ip]}"
   end
@@ -237,21 +231,11 @@ class NextDeploy < Thor
   def putftp(typefile=nil, projectname=nil, file=nil)
     init
 
-    if typefile == nil
-      error("You must provide type of file to push: assets or dump")
-    end
-
-    if projectname == nil
-      error("Argument projectname is missing")
-    end
-
-    if file == nil
-      error("File to push is missing")
-    end
-
-    if @projects.empty?
-      error("No projects for #{@user[:email]}")
-    end
+    # ensure requirement
+    error("You must provide type of file to push: assets or dump") unless typefile
+    error("Argument projectname is missing") unless projectname
+    error("File to push is missing") unless file
+    error("No projects for #{@user[:email]}") if @projects.empty?
 
     # select project following parameter
     proj = @projects.select { |p| p[:name] == projectname }
@@ -288,30 +272,18 @@ class NextDeploy < Thor
   def getftp(typefile=nil, projectname=nil, file=nil)
     init
 
-    if typefile == nil
-      error("You must provide type of file to push: assets or dump")
-    end
-
-    if projectname == nil
-      error("Argument projectname is missing")
-    end
-
-    if @projects.empty?
-      error("No projects for #{@user[:email]}")
-    end
+    # ensure requirement
+    error("You must provide type of file to push: assets or dump") unless typefile
+    error("Argument projectname is missing") unless projectname
+    error("No projects for #{@user[:email]}") if @projects.empty?
 
     # select project following parameter
     proj = @projects.select { |p| p[:name] == projectname }
     # return if parameter is invalid
     error("Project #{projectname} not found") if !proj || proj.empty?
+
     @project = proj[0]
-
-    if typefile == 'assets'
-      ftp_filename = 'assets.tar.gz'
-    else
-      ftp_filename = 'dump.sql.gz'
-    end
-
+    (typefile == 'assets') ? (ftp_filename = 'assets.tar.gz') : (ftp_filename = 'dump.sql.gz')
     login_ftp = @project[:gitpath].gsub(/^.*\//, '')
     (@project[:password].empty?) ? (password_ftp = 'nextdeploy') : (password_ftp = @project[:password])
 
@@ -329,17 +301,10 @@ class NextDeploy < Thor
   def listftp(typefile=nil, projectname=nil, file=nil)
     init
 
-    if typefile == nil
-      error("You must provide type of file to push: assets or dump")
-    end
-
-    if projectname == nil
-      error("Argument projectname is missing")
-    end
-
-    if @projects.empty?
-      error("No projects for #{@user[:email]}")
-    end
+    # ensure requirement
+    error("You must provide type of file to push: assets or dump") unless typefile
+    error("Argument projectname is missing") unless projectname
+    error("No projects for #{@user[:email]}") if @projects.empty?
 
     # select project following parameter
     proj = @projects.select { |p| p[:name] == projectname }
@@ -508,9 +473,7 @@ class NextDeploy < Thor
       gitp = gitpath
 
       # if we are not into git project, return
-      if gitp.empty?
-        return
-      end
+      return if gitp.empty?
 
       response = @conn.get do |req|
         req.url "/api/v1/projects/git/#{gitp}"
@@ -533,9 +496,7 @@ class NextDeploy < Thor
 
       # if we are not into git project, return
       gitp = gitpath
-      if gitp.empty?
-        return
-      end
+      return if gitp.empty?
 
       commit = commitid
 
@@ -575,7 +536,7 @@ class NextDeploy < Thor
          req.headers['Accept'] = 'application/json'
          req.body = auth_req.to_json
         end
-      rescue Exception => e
+      rescue => e
         warn("Issue during authentification, bad email or password ?")
         warn(e)
         exit
@@ -646,7 +607,6 @@ class NextDeploy < Thor
         req.url "/api/v1/brands"
         req.headers = rest_headers
       end
-
 
       @brands = json(response.body)[:brands]
     end
