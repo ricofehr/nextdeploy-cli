@@ -34,7 +34,11 @@ The ruby client manages the following commands
 `  ndeploy projects                                    # list projects for current user
 `  ndeploy putftp assets|dump [project] [file]         # putftp an assets archive [file] or a dump [file] for the [project]
 `  ndeploy ssh                                         # ssh into remote vm
+`  ndeploy sshkey                                      # Put your public ssh key (id_rsa.pub) onto NextDeploy
+`  ndeploy sshkeys                                     # List sshkeys actually associated to the current user
 `  ndeploy up                                          # launch current commit to remote nextdeploy
+`  ndeploy upgrade                                     # upgrade ndeploy with the last version
+`  ndeploy version                                     # print current version of ndeploy
 ```
 
 ## Contributing
