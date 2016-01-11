@@ -14,14 +14,14 @@ install-cli() {
   if (( NEWINSTALL == 1 )); then
     # if ubuntu / debian, install ruby package if needed
     if [[ -f /etc/debian_version ]]; then
-      whereis gem || sudo apt-get install -y --force-yes ruby rubygems
+      [[ -n "$(whereis gem | sed "s;gem:;;" | tr -d "\n")" ]] || sudo apt-get install -y --force-yes ruby rubygems
       sudo apt-get install -y --force-yes ruby-dev
       sudo gem install bundler >install.log 2>&1
     fi
 
     # fedora, install ruby package if needed
     if [[ -f /etc/fedora_release ]]; then
-      whereis gem || sudo dnf install -y ruby rubygems
+      [[ -n "$(whereis gem | sed "s;gem:;;" | tr -d "\n")" ]] || sudo dnf install -y ruby rubygems
       sudo dnf install -y ruby-dev
       gem install bundler >install.log 2>&1
     fi
