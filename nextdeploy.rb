@@ -54,10 +54,8 @@ class NextDeploy < Thor
       exit
     end
 
-    # get systemimage
-    system = @systems.select { |s| s[:systemimagetype] == @project[:systemimagetype] }[0]
     # prepare post request
-    launch_req = { vm: { project_id: @project[:id], vmsize_id: @project[:vmsizes][0], user_id: @user[:id], systemimage_id: system[:id], commit_id: commitid } }
+    launch_req = { vm: { project_id: @project[:id], vmsize_id: @project[:vmsizes][0], user_id: @user[:id], systemimage_id: @project[:systemimages][0], commit_id: commitid } }
 
     response = @conn.post do |req|
       req.url "/api/v1/vms"
@@ -84,10 +82,8 @@ class NextDeploy < Thor
     error("Project #{projectname} not found") if !proj || proj.empty?
     @project = proj[0]
 
-    # get well systemimage
-    system = @systems.select { |s| s[:systemimagetype] == @project[:systemimagetype] }[0]
     # prepare post request
-    launch_req = { vm: { project_id: @project[:id], vmsize_id: @project[:vmsizes][0], user_id: @user[:id], systemimage_id: system[:id], commit_id: "#{@project[:id]}-#{branch}-#{commit}" } }
+    launch_req = { vm: { project_id: @project[:id], vmsize_id: @project[:vmsizes][0], user_id: @user[:id], systemimage_id: @project[:systemimages][0], commit_id: "#{@project[:id]}-#{branch}-#{commit}" } }
 
     response = @conn.post do |req|
       req.url "/api/v1/vms"
@@ -373,7 +369,6 @@ class NextDeploy < Thor
       init_projects
       init_brands
       init_frameworks
-      init_systems
       get_project
       get_vm
     end
@@ -381,7 +376,7 @@ class NextDeploy < Thor
     # define some constants
     #
     def init_constants
-      @@version = "0.13.3"
+      @@version = "0.15"
       @@remote_cli = "http://cli.nextdeploy.io"
     end
 
