@@ -522,7 +522,7 @@ class NextDeploy < Thor
     # @param [String] password of the user
     # No return
     def authuser(email, password)
-      auth_req = { email: email, password: password }
+      auth_req = { user: { email: email, password: password } } 
 
       begin
         response = @conn.post do |req|
