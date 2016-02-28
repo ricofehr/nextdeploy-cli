@@ -121,7 +121,7 @@ class NextDeploy < Thor
     # ensure requirements
     error("No vms for #{@user[:email]}") if @vms.empty?
 
-    @vms.each do |vm|
+    @vms.sort_by {|v| v[:id]}.reverse.each do |vm|
       project = @projects.select { |project| project[:id] == vm[:project] }
       status = "RUNNING"
       # put url if vm is running
@@ -130,7 +130,7 @@ class NextDeploy < Thor
       # update status field
       status = "SETUP" if vm[:status] < 0
       status = "ERROR" if vm[:status] == 1
-      puts "#{project[0][:name]}, #{vm[:commit].gsub(/^[0-9]+-/, '')[0,16]}, #{status}#{url}"
+      puts "#{vm[:id]}, #{project[0][:name]}, #{vm[:commit].gsub(/^[0-9]+-/, '')[0,16]}, #{status}#{url}"
     end
   end
 
@@ -211,14 +211,19 @@ class NextDeploy < Thor
 
   # Ssh into remote vm
   #
-  desc "ssh", "ssh into remote vm"
-  def ssh
+  desc "ssh [idvm]", "ssh into remote vm with [idvm] (view ndeploy list) or current vm by default"
+  def ssh(idvm=nil)
     init
 
-    # ensure requirement
-    error("No vm for commit #{commitid}") unless @vm
+    vmtossh = @vm
+    if idvm
+      vmtossh = @vms.select { |vm| vm[:id].to_i == idvm.to_i }[0]
+    end
 
-    exec "ssh modem@#{@vm[:floating_ip]}"
+    # ensure requirement
+    error("No vm for commit #{commitid}") unless vmtossh
+
+    exec "ssh modem@#{vmtossh[:floating_ip]}"
   end
 
   # Upload an asset archive or a sql/mongo dump onto ftp repository dedicated to project
@@ -522,7 +527,7 @@ class NextDeploy < Thor
     # @param [String] password of the user
     # No return
     def authuser(email, password)
-      auth_req = { user: { email: email, password: password } } 
+      auth_req = { user: { email: email, password: password } }
 
       begin
         response = @conn.post do |req|
