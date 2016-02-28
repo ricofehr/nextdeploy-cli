@@ -94,20 +94,25 @@ class NextDeploy < Thor
     json(response.body)[:vm]
   end
 
-  # Destroy current vm
+  # Destroy a vm
   #
-  desc "destroy", "destroy current vm"
-  def destroy
+  desc "destroy [idvm]", "destroy remote vm wit [idvm] (see ndeploy list) current vm by default"
+  def destroy(idvm=nil)
     init
 
+    vmtodestroy = @vm
+    if idvm
+      vmtodestroy = @vms.select { |vm| vm[:id].to_i == idvm.to_i }[0]
+    end
+
     # ensure requirements
-    unless @vm
+    unless vmtodestroy
       warn("No vm for commit #{commitid}")
       exit
     end
 
     response = @conn.delete do |req|
-      req.url "/api/v1/vms/#{@vm[:id]}"
+      req.url "/api/v1/vms/#{vmtodestroy[:id]}"
       req.headers = rest_headers
     end
   end
