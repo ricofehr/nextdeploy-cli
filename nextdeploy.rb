@@ -102,7 +102,7 @@ class NextDeploy < Thor
 
     vmtodestroy = @vm
     if idvm
-      vmtodestroy = @vms.select { |vm| vm[:id].to_i == idvm.to_i }[0]
+      vmtodestroy = @vms.select { |vm| vm[:id].to_i == idvm.to_i && vm[:user] == @user[:id] }[0]
     end
 
     # ensure requirements
@@ -120,6 +120,7 @@ class NextDeploy < Thor
   # List current active vms
   #
   desc "list", "list launched vms for current user"
+  option :all
   def list
     init
 
@@ -135,7 +136,10 @@ class NextDeploy < Thor
       # update status field
       status = "SETUP" if vm[:status] < 0
       status = "ERROR" if vm[:status] == 1
-      puts "#{vm[:id]}, #{project[0][:name]}, #{vm[:commit].gsub(/^[0-9]+-/, '')[0,16]}, #{status}#{url}"
+      # print only his own vms
+      if vm[:user] == @user[:id] || options[:all]
+        puts "#{vm[:id]}, #{project[0][:name]}, #{vm[:commit].gsub(/^[0-9]+-/, '')[0,16]}, #{status}#{url}"
+      end
     end
   end
 
@@ -234,6 +238,7 @@ class NextDeploy < Thor
   # Upload an asset archive or a sql/mongo dump onto ftp repository dedicated to project
   #
   desc "putftp assets|dump [project] [file]", "putftp an assets archive [file] or a dump [file] for the [project]"
+  option :branch
   def putftp(typefile=nil, projectname=nil, file=nil)
     init
 
@@ -250,13 +255,17 @@ class NextDeploy < Thor
     @project = proj[0]
 
     if typefile == 'assets'
-      ftp_filename = 'assets.tar.gz'
+      if options[:branch]
+        ftp_filename = "#{options[:branch]}_assets.tar.gz"
+      else
+        ftp_filename = 'default_assets.tar.gz'
+      end
     else
       # mongo dump
-      if file.match(/.tar.gz$/)
-        ftp_filename = 'dump.tar.gz'
+      if options[:branch]
+        ftp_filename = "#{options[:branch]}_#{file}"
       else
-        ftp_filename = 'dump.sql.gz'
+        ftp_filename = "default_#{file}"
       end
     end
 
@@ -274,7 +283,7 @@ class NextDeploy < Thor
 
   # Download an asset archive or a sql/mongo dump from ftp repository dedicated to project
   #
-  desc "getftp assets|dump [project]", "get an assets archive or a dump for the [project]"
+  desc "getftp assets|dump [project] [file]", "get an assets archive or a dump (file or default) for the [project]"
   def getftp(typefile=nil, projectname=nil, file=nil)
     init
 
@@ -289,7 +298,8 @@ class NextDeploy < Thor
     error("Project #{projectname} not found") if !proj || proj.empty?
 
     @project = proj[0]
-    (typefile == 'assets') ? (ftp_filename = 'assets.tar.gz') : (ftp_filename = 'dump.sql.gz')
+    (typefile == 'assets') ? (ftp_filename = 'default_assets.tar.gz') : (ftp_filename = 'default_s_bdd.sql.gz')
+    ftp_filename = file if file
     login_ftp = @project[:gitpath].gsub(/^.*\//, '')
     (@project[:password].empty?) ? (password_ftp = 'nextdeploy') : (password_ftp = @project[:password])
 
@@ -386,7 +396,7 @@ class NextDeploy < Thor
     # define some constants
     #
     def init_constants
-      @@version = "1.0.7"
+      @@version = "1.1"
       @@remote_cli = "http://cli.nextdeploy.io"
     end
 
