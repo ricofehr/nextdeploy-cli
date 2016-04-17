@@ -32,10 +32,13 @@ class NextDeploy < Thor
   # upgrade ndeploy
   #
   desc "upgrade", "upgrade ndeploy with the last version"
+  option :force
   def upgrade
     init_constants
     remote_version = get_remote_version
-    if remote_version.eql? @@version
+    if options[:force]
+      exec "curl -sSL http://cli.nextdeploy.io/ | bash"
+    elsif remote_version.eql? @@version
       puts "You have already the last version of ndeploy. No need to upgrade"
     else
       exec "curl -sSL http://cli.nextdeploy.io/ | bash"
