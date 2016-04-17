@@ -66,6 +66,39 @@ class NextDeploy < Thor
     json(response.body)[:vm]
   end
 
+  # Share project folder from vm to local computer
+  #
+  desc "share [idvm] [workspace]", "share project folder from vm identified by [idvm] (see ndeploy list), to local created folder (parent is current directory or [workspace] parameter)"
+  def share(idvm=nil, workspace=nil)
+    init
+
+    if idvm
+      vmtoshare = @vms.select { |vm| vm[:id].to_i == idvm.to_i }[0]
+    end
+
+    # ensure requirements
+    unless vmtoshare
+      warn("A valid vmId is needed. Please execute \"ndeploy list\", get a vmId (firstcolumn) and execute again \"ndeploy share [vmId]\"")
+      exit
+    end
+
+    vmname = vmtoshare[:name].sub(/\..*$/,'')
+    workspace = "#{workspace}/" if workspace && !workspace.match(/.*\/$/)
+    foldermount = "#{workspace}#{vmname}"
+
+    if system "mkdir -p #{foldermount}"
+      system "umount -f #{foldermount} >/dev/null 2>&1"
+      success = system "mount -t smbfs smb://modem:#{vmtoshare[:termpassword]}@#{vmtoshare[:floating_ip]}/#{vmname} #{foldermount}"
+      if success
+        warn("Project Folder is mounted with success in #{foldermount}")
+      else
+        warn("An error occurs during remote folder mount. Please ensure that your vpn connection is up and running.")
+      end
+    else
+      warn("An error occurs during remote folder mount, please ensure that current user has permission rights to mount into #{foldermount}.")
+    end
+  end
+
   # Launch a setted commit into a new vm on nextdeploy cloud
   #
   desc "launch [projectname] [branch] [commit]", "launch [commit] (default is head) on the [branch] (default is master) for [projectname] into remote nextdeploy"
@@ -396,7 +429,7 @@ class NextDeploy < Thor
     # define some constants
     #
     def init_constants
-      @@version = "1.1"
+      @@version = "1.2"
       @@remote_cli = "http://cli.nextdeploy.io"
     end
 
