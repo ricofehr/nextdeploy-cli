@@ -55,7 +55,7 @@ class NextDeploy < Thor
     end
 
     # prepare post request
-    launch_req = { vm: { project_id: @project[:id], vmsize_id: @project[:vmsizes][0], user_id: @user[:id], systemimage_id: @project[:systemimages][0], commit_id: commitid } }
+    launch_req = { vm: { project_id: @project[:id], vmsize_id: @project[:vmsizes][0], user_id: @user[:id], systemimage_id: @project[:systemimages][0], technos: @project[:technos], is_auth: true, layout: @user[:layout], htlogin: @project[:login], htpassword: @project[:password], commit_id: commitid } }
 
     response = @conn.post do |req|
       req.url "/api/v1/vms"
@@ -101,8 +101,8 @@ class NextDeploy < Thor
 
   # Launch a setted commit into a new vm on nextdeploy cloud
   #
-  desc "launch [projectname] [branch] [commit]", "launch [commit] (default is head) on the [branch] (default is master) for [projectname] into remote nextdeploy"
-  def launch(projectname=nil, branch='master', commit='HEAD')
+  desc "launch [projectname] [branch]", "launch [branch] (default is master) for [projectname] into a remote vm"
+  def launch(projectname=nil, branch='master')
     init
 
     # ensure requirements
@@ -115,8 +115,12 @@ class NextDeploy < Thor
     error("Project #{projectname} not found") if !proj || proj.empty?
     @project = proj[0]
 
+    # get branch from api server
+    get_branche(branch)
+    error("Branch #{branch} not found") if !@branche
+    
     # prepare post request
-    launch_req = { vm: { project_id: @project[:id], vmsize_id: @project[:vmsizes][0], user_id: @user[:id], systemimage_id: @project[:systemimages][0], commit_id: "#{@project[:id]}-#{branch}-#{commit}" } }
+    launch_req = { vm: { project_id: @project[:id], vmsize_id: @project[:vmsizes][0], user_id: @user[:id], technos: @project[:technos], systemimage_id: @project[:systemimages][0], is_auth: true, layout: @user[:layout], htlogin: @project[:login], htpassword: @project[:password], commit_id: "#{@branche[:commits][0]}" } }
 
     response = @conn.post do |req|
       req.url "/api/v1/vms"
@@ -534,6 +538,25 @@ class NextDeploy < Thor
       end
 
       @project = json(response.body)[:project]
+    end
+
+    # Get branch object
+    #
+    # No params
+    # @return [Array[String]] json output for a branch
+    def get_branche(branch='master')
+      
+      response = @conn.get do |req|
+        req.url "/api/v1/branches/#{@project[:id]}-#{branch}"
+        req.headers = rest_headers
+      end
+
+      if response.body == "null"
+        @branche = nil
+        return
+      end
+
+      @branche = json(response.body)[:branche]
     end
 
     # get he vm for current commit
