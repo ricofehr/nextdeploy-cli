@@ -71,8 +71,8 @@ class NextDeploy < Thor
 
   # Share project folder from vm to local computer
   #
-  desc "share [idvm] [workspace]", "share project folder from vm identified by [idvm] (see ndeploy list), to local created folder (parent is current directory or [workspace] parameter)"
-  def share(idvm=nil, workspace=nil)
+  desc "folder [idvm] [workspace]", "share project folder from vm identified by [idvm] (see ndeploy list), to local created folder (parent is current directory or [workspace] parameter)"
+  def folder(idvm=nil, workspace=nil)
     init
 
     if idvm
@@ -101,6 +101,9 @@ class NextDeploy < Thor
       warn("An error occurs during remote folder mount, please ensure that current user has permission rights to mount into #{foldermount}.")
     end
   end
+
+  # alias "share" (old name) for folder command
+  map share: :folder
 
   # Launch a setted commit into a new vm on nextdeploy cloud
   #
