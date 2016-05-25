@@ -58,7 +58,7 @@ class NextDeploy < Thor
     end
 
     # prepare post request
-    launch_req = { vm: { project_id: @project[:id], vmsize_id: @project[:vmsizes][0], user_id: @user[:id], systemimage_id: @project[:systemimages][0], technos: @project[:technos], is_auth: true, is_prod: false, is_cached: false, is_ht: @project[:is_ht], layout: @user[:layout], htlogin: @project[:login], htpassword: @project[:password], commit_id: commitid } }
+    launch_req = { vm: { project_id: @project[:id], vmsize_id: @project[:vmsizes][0], user_id: @user[:id], systemimage_id: @project[:systemimages][0], technos: @project[:technos], is_auth: true, is_prod: false, is_cached: false, is_backup: false, is_ht: @project[:is_ht], layout: @user[:layout], htlogin: @project[:login], htpassword: @project[:password], commit_id: commitid } }
 
     response = @conn.post do |req|
       req.url "/api/v1/vms/short"
@@ -88,10 +88,18 @@ class NextDeploy < Thor
     vmname = vmtoshare[:name].sub(/\..*$/,'')
     workspace = "#{workspace}/" if workspace && !workspace.match(/.*\/$/)
     foldermount = "#{workspace}#{vmname}"
+    success = false
 
     if system "mkdir -p #{foldermount}"
-      system "umount -f #{foldermount} >/dev/null 2>&1"
-      success = system "mount -t smbfs smb://modem:#{vmtoshare[:termpassword]}@#{vmtoshare[:floating_ip]}/#{vmname} #{foldermount}"
+      # test if mac os x
+      if File.exists?('/usr/bin/sw_vers')
+        system "umount -f #{foldermount} >/dev/null 2>&1"
+        success = system "mount -t smbfs smb://modem:#{vmtoshare[:termpassword]}@#{vmtoshare[:floating_ip]}/#{vmname} #{foldermount}"
+      else
+        system "sudo umount -f #{foldermount} >/dev/null 2>&1"
+        success = system "sudo mount -t cifs -o username=modem,password=#{vmtoshare[:termpassword]} //#{vmtoshare[:floating_ip]}/#{vmname} #{foldermount}"
+      end
+
       if success
         warn("Project Folder is mounted with success in #{foldermount}")
       else
@@ -126,7 +134,7 @@ class NextDeploy < Thor
     error("Branch #{branch} not found") if !@branche
     
     # prepare post request
-    launch_req = { vm: { project_id: @project[:id], vmsize_id: @project[:vmsizes][0], user_id: @user[:id], technos: @project[:technos], systemimage_id: @project[:systemimages][0], is_auth: true, is_prod: false, is_cached: false, is_ht: @project[:is_ht], layout: @user[:layout], htlogin: @project[:login], htpassword: @project[:password], commit_id: "#{@branche[:commits][0]}" } }
+    launch_req = { vm: { project_id: @project[:id], vmsize_id: @project[:vmsizes][0], user_id: @user[:id], technos: @project[:technos], systemimage_id: @project[:systemimages][0], is_auth: true, is_prod: false, is_cached: false, is_backup: false, is_ht: @project[:is_ht], layout: @user[:layout], htlogin: @project[:login], htpassword: @project[:password], commit_id: "#{@branche[:commits][0]}" } }
 
     response = @conn.post do |req|
       req.url "/api/v1/vms/short"
@@ -267,9 +275,10 @@ class NextDeploy < Thor
   def ssh(idvm=nil)
     init
 
-    vmtossh = @vm
     if idvm
       vmtossh = @vms.select { |vm| vm[:id].to_i == idvm.to_i }[0]
+    else
+      vmtossh = @vm ? @vm : @vms.sort_by {|v| v[:id]}.reverse.first
     end
 
     # ensure requirement
@@ -282,15 +291,19 @@ class NextDeploy < Thor
   #
   desc "putftp assets|dump [project] [file]", "putftp an assets archive [file] or a dump [file] for the [project]"
   option :branch
+  option :pathuri
   def putftp(typefile=nil, projectname=nil, file=nil)
     init
 
     # ensure requirement
     error("You must provide type of file to push: assets or dump") unless typefile
+    error("You must provide type of file to push: assets or dump") if typefile == 'backup'
     error("Argument projectname is missing") unless projectname
     error("File to push is missing") unless file
     error("No projects for #{@user[:email]}") if @projects.empty?
 
+    # rename file or let as it is
+    isrename = (options[:branch] && options[:pathuri]) ? true : false
     # select project following parameter
     proj = @projects.select { |p| p[:name] == projectname }
     # return if parameter is invalid
@@ -298,17 +311,17 @@ class NextDeploy < Thor
     @project = proj[0]
 
     if typefile == 'assets'
-      if options[:branch]
-        ftp_filename = "#{options[:branch]}_assets.tar.gz"
+      if isrename
+        ftp_filename = "#{options[:branch]}_#{options[:pathuri]}_assets.tar.gz"
       else
-        ftp_filename = 'default_assets.tar.gz'
+        ftp_filename = file
       end
     else
       # mongo dump
-      if options[:branch]
-        ftp_filename = "#{options[:branch]}_#{file}"
+      if isrename
+        ftp_filename = "#{options[:branch]}_#{options[:pathuri]}_#{file}"
       else
-        ftp_filename = "default_#{file}"
+        ftp_filename = file
       end
     end
 
@@ -326,12 +339,12 @@ class NextDeploy < Thor
 
   # Download an asset archive or a sql/mongo dump from ftp repository dedicated to project
   #
-  desc "getftp assets|dump [project] [file]", "get an assets archive or a dump (file or default) for the [project]"
+  desc "getftp assets|dump|backup [project] [file]", "get an assets archive or a dump (file or default) for the [project]"
   def getftp(typefile=nil, projectname=nil, file=nil)
     init
 
     # ensure requirement
-    error("You must provide type of file to push: assets or dump") unless typefile
+    error("You must provide type of file to push: assets, backup or dump") unless typefile
     error("Argument projectname is missing") unless projectname
     error("No projects for #{@user[:email]}") if @projects.empty?
 
@@ -341,7 +354,7 @@ class NextDeploy < Thor
     error("Project #{projectname} not found") if !proj || proj.empty?
 
     @project = proj[0]
-    (typefile == 'assets') ? (ftp_filename = 'default_assets.tar.gz') : (ftp_filename = 'default_s_bdd.sql.gz')
+    (typefile == 'assets') ? (ftp_filename = 'default_server_assets.tar.gz') : (ftp_filename = 'default_server.sql.gz')
     ftp_filename = file if file
     login_ftp = @project[:gitpath].gsub(/^.*\//, '')
     (@project[:password].empty?) ? (password_ftp = 'nextdeploy') : (password_ftp = @project[:password])
@@ -356,7 +369,7 @@ class NextDeploy < Thor
 
   # List asset archive or a sql/mongo dump from ftp repository dedicated to project
   #
-  desc "listftp assets|dump [project]", "list assets archive or a dump for the [project]"
+  desc "listftp assets|dump|backup [project]", "list assets archive or a dump for the [project]"
   def listftp(typefile=nil, projectname=nil, file=nil)
     init
 
@@ -439,7 +452,7 @@ class NextDeploy < Thor
     # define some constants
     #
     def init_constants
-      @@version = "1.2"
+      @@version = "1.4"
       @@remote_cli = "http://cli.nextdeploy.io"
     end
 
