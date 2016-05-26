@@ -29,9 +29,12 @@ class NextDeploy < Thor
     end
   end
 
+  # alias "update" for upgrade command
+  map update: :upgrade
+
   # upgrade ndeploy
   #
-  desc "upgrade", "upgrade ndeploy with the last version"
+  desc "upgrade [--force]", "upgrade ndeploy with the last version"
   option :force
   def upgrade
     init_constants
@@ -69,6 +72,121 @@ class NextDeploy < Thor
     json(response.body)[:vm]
   end
 
+  # Display logs for a vm
+  #
+  desc "logs [idvm]", "Display some logs for vm identified by [idvm] (view ndeploy list), or current vm or last vm by default (if idvm is missing)"
+  def logs(idvm=nil)
+    logs = []
+    init
+
+    if idvm
+      vmtologs = @vms.select { |vm| vm[:status] > 1 && vm[:id].to_i == idvm.to_i }[0]
+    else
+      vmtologs = @vm && @vm[:status] && @vm[:status] > 1 ? @vm : @vms.select { |vm| vm[:status] > 1 && vm[:user] == @user[:id] }.sort_by {|v| v[:id]}.reverse.first
+    end
+
+    # ensure requirement
+    error("No vm running") unless vmtologs
+
+    response = @conn.post do |req|
+      req.url "/api/v1/vms/#{vmtologs[:id]}/logs"
+      req.headers = rest_headers
+    end
+
+    logs.push response.body
+
+    vmtologs[:uris].each do |uri|
+      response = @conn.post do |req|
+        req.url "/api/v1/uris/#{uri}/logs"
+        req.headers = rest_headers
+      end
+
+      logs.push response.body
+    end
+
+    puts logs.join("\n")
+  end
+
+  # Display details for a vm
+  #
+  desc "details [idvm]", "Display some details for vm identified by [idvm] (view ndeploy list), or current vm or last vm by default (if idvm is missing)"
+  def details(idvm=nil)
+    init
+
+    if idvm
+      vmtodetails = @vms.select { |vm| vm[:status] > 1 && vm[:id].to_i == idvm.to_i }[0]
+    else
+      vmtodetails = @vm && @vm[:status] && @vm[:status] > 1 ? @vm : @vms.select { |vm| vm[:status] > 1 && vm[:user] == @user[:id] }.sort_by {|v| v[:id]}.reverse.first
+    end
+
+    # ensure requirement
+    error("No vm running") unless vmtodetails
+
+    project = @conn.get do |req|
+      req.url "/api/v1/projects/#{vmtodetails[:project]}"
+      req.headers = rest_headers
+    end
+
+    user = @conn.get do |req|
+      req.url "/api/v1/users/#{vmtodetails[:user]}"
+      req.headers = rest_headers
+    end
+
+    puts "Name: #{vmtodetails[:name]}"
+    puts "User: #{json(user.body)[:user][:email]}"
+    puts "Project: #{json(project.body)[:project][:name]}"
+    puts "Branch: #{vmtodetails[:commit].sub(/^[0-9]+-/,'').sub(/-[0-9a-zA-Z]+$/, '')}"
+    puts "Commit: #{vmtodetails[:commit].sub(/^.+-/,'')}"
+    puts "Remote: ssh modem@#{vmtodetails[:floating_ip]}"
+    puts "Samba Share: smb://modem:#{vmtodetails[:term_password]}@#{vmtodetails[:floating_ip]}/#{vmtodetails[:name].gsub(/\..*$/,'')}"
+    puts "Technos"
+    vmtodetails[:technos].each do |techno_id|
+      resptechno = @conn.get do |req|
+        req.url "/api/v1/technos/#{techno_id}"
+        req.headers = rest_headers
+      end
+
+      techno = json(resptechno.body)[:techno]
+
+      resptype = @conn.get do |req|
+        req.url "/api/v1/technotypes/#{techno[:technotype]}"
+        req.headers = rest_headers
+      end
+      technotype = json(resptype.body)[:technotype][:name]
+
+      puts "  #{technotype} => #{techno[:name]}"
+    end
+    puts "Prod: #{vmtodetails[:is_prod]}"
+    puts "BasicAuth: #{vmtodetails[:is_auth]}"
+    puts "Htaccess: #{vmtodetails[:is_ht]}"
+    puts "Varnish Cache: #{vmtodetails[:is_cached]}"
+    puts "Backup: #{vmtodetails[:is_backup]}"
+    puts "Uris"
+    vmtodetails[:uris].each do |uri_id|
+      respuri = @conn.get do |req|
+        req.url "/api/v1/uris/#{uri_id}"
+        req.headers = rest_headers
+      end
+
+      uri = json(respuri.body)[:uri]
+
+      respframework = @conn.get do |req|
+        req.url "/api/v1/frameworks/#{uri[:framework]}"
+        req.headers = rest_headers
+      end
+      framework = json(respframework.body)[:framework][:name]
+
+      puts "  #{uri[:absolute]}"
+      puts "    HtLogin: #{vmtodetails[:htlogin]}" if vmtodetails[:is_auth]
+      puts "    HtPassword: #{vmtodetails[:htpassword]}" if vmtodetails[:is_auth]
+      puts "    Framework: #{framework}"
+      puts "    Path: #{uri[:path]}"
+      puts "    Aliases: #{uri[:aliases]}" if uri[:aliases] && !uri[:aliases].empty?
+      puts "    Env vars: #{uri[:envvars]}" if uri[:envvars] && !uri[:envvars].empty?
+      puts "    Ip filter: #{uri[:ipfilter]}" if uri[:ipfilter] && !uri[:ipfilter].empty?
+    end
+  end
+
   # Share project folder from vm to local computer
   #
   desc "folder [idvm] [workspace]", "share project folder from vm identified by [idvm] (see ndeploy list), to local created folder (parent is current directory or [workspace] parameter)"
@@ -76,10 +194,17 @@ class NextDeploy < Thor
     init
 
     if idvm
-      vmtoshare = @vms.select { |vm| vm[:id].to_i == idvm.to_i }[0]
+      vmtoshare = @vms.select { |vm| vm[:status] > 1 && vm[:id].to_i == idvm.to_i }[0]
+    else
+      vmtoshare = @vms.select { |vm| vm[:status] > 1 && vm[:user] == @user[:id] }.sort_by {|v| v[:id]}.reverse.first
     end
 
     # ensure requirements
+    if workspace.nil? && File.exists?('.git')
+      warn("Please execute folder command outside a git repository")
+      exit
+    end
+
     unless vmtoshare
       warn("A valid vmId is needed. Please execute \"ndeploy list\", get a vmId (firstcolumn) and execute again \"ndeploy share [vmId]\"")
       exit
@@ -170,26 +295,31 @@ class NextDeploy < Thor
 
   # List current active vms
   #
-  desc "list", "list launched vms for current user"
+  desc "list [--all] [--head n]", "list launched vms for current user."
   option :all
+  option :head
   def list
     init
 
     # ensure requirements
     error("No vms for #{@user[:email]}") if @vms.empty?
 
+    nblines = 0
     @vms.sort_by {|v| v[:id]}.reverse.each do |vm|
       project = @projects.select { |project| project[:id] == vm[:project] }
       status = "RUNNING"
       # put url if vm is running
-      url = ", http://#{vm[:name]}/"
+      url = ", #{vm[:name]}"
       url = "" if vm[:status] <= 1
       # update status field
       status = "SETUP" if vm[:status] < 0
       status = "ERROR" if vm[:status] == 1
       # print only his own vms
       if vm[:user] == @user[:id] || options[:all]
-        puts "#{vm[:id]}, #{project[0][:name]}, #{vm[:commit].gsub(/^[0-9]+-/, '')[0,16]}, #{status}#{url}"
+        if !options[:head] || nblines < options[:head].to_i
+          puts "#{vm[:id]}, #{project[0][:name]}, #{vm[:commit].gsub(/^[0-9]+-/, '')[0,16]}, #{status}#{url}"
+          nblines += 1
+        end
       end
     end
   end
@@ -278,7 +408,7 @@ class NextDeploy < Thor
     if idvm
       vmtossh = @vms.select { |vm| vm[:id].to_i == idvm.to_i }[0]
     else
-      vmtossh = @vm ? @vm : @vms.sort_by {|v| v[:id]}.reverse.first
+      vmtossh = @vm ? @vm : @vms.select { |vm| vm[:user] == @user[:id] }.sort_by {|v| v[:id]}.reverse.first
     end
 
     # ensure requirement
@@ -289,7 +419,7 @@ class NextDeploy < Thor
 
   # Upload an asset archive or a sql/mongo dump onto ftp repository dedicated to project
   #
-  desc "putftp assets|dump [project] [file]", "putftp an assets archive [file] or a dump [file] for the [project]"
+  desc "putftp assets|dump [--branch b] [--pathuri p] [project] [file]", "putftp an assets archive [file] or a dump [file] for the [project]"
   option :branch
   option :pathuri
   def putftp(typefile=nil, projectname=nil, file=nil)
@@ -422,13 +552,6 @@ class NextDeploy < Thor
     puts "Username: #{@email}"
     puts "Password: #{@password}"
     puts "Endpoint: #{@endpoint}"
-  end
-
-  # Execute git command
-  #
-  desc "git [cmd]", "Executes a git command"
-  def git(cmd=nil)
-    exec "git #{cmd}"
   end
 
   no_commands do
