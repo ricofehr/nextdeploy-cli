@@ -138,7 +138,7 @@ class NextDeploy < Thor
     puts "Branch: #{vmtodetails[:commit].sub(/^[0-9]+-/,'').sub(/-[0-9a-zA-Z]+$/, '')}"
     puts "Commit: #{vmtodetails[:commit].sub(/^.+-/,'')}"
     puts "Remote: ssh modem@#{vmtodetails[:floating_ip]}"
-    puts "Samba Share: smb://modem:#{vmtodetails[:term_password]}@#{vmtodetails[:floating_ip]}/#{vmtodetails[:name].gsub(/\..*$/,'')}"
+    puts "Samba Share: smb://modem:#{vmtodetails[:termpassword]}@#{vmtodetails[:floating_ip]}/#{vmtodetails[:name].gsub(/\..*$/,'')}"
     puts "Technos"
     vmtodetails[:technos].each do |techno_id|
       resptechno = @conn.get do |req|
