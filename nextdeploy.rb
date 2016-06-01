@@ -30,7 +30,7 @@ class NextDeploy < Thor
   end
 
   # alias "update" for upgrade command
-  map update: :upgrade
+  map 'update' => :upgrade
 
   # upgrade ndeploy
   #
