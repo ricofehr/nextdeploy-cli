@@ -61,7 +61,7 @@ class NextDeploy < Thor
     end
 
     # prepare post request
-    launch_req = { vm: { project_id: @project[:id], vmsize_id: @project[:vmsizes][0], user_id: @user[:id], systemimage_id: @project[:systemimages][0], technos: @project[:technos], is_auth: true, is_prod: false, is_cached: false, is_backup: false, is_ht: @project[:is_ht], layout: @user[:layout], htlogin: @project[:login], htpassword: @project[:password], commit_id: commitid } }
+    launch_req = { vm: { project_id: @project[:id], vmsize_id: @project[:vmsizes][0], user_id: @user[:id], systemimage_id: @project[:systemimages][0], technos: @project[:technos], is_auth: true, is_prod: false, is_cached: false, is_backup: false, is_ci: false, is_ht: @project[:is_ht], layout: @user[:layout], htlogin: @project[:login], htpassword: @project[:password], commit_id: commitid } }
 
     response = @conn.post do |req|
       req.url "/api/v1/vms/short"
@@ -259,7 +259,7 @@ class NextDeploy < Thor
     error("Branch #{branch} not found") if !@branche
     
     # prepare post request
-    launch_req = { vm: { project_id: @project[:id], vmsize_id: @project[:vmsizes][0], user_id: @user[:id], technos: @project[:technos], systemimage_id: @project[:systemimages][0], is_auth: true, is_prod: false, is_cached: false, is_backup: false, is_ht: @project[:is_ht], layout: @user[:layout], htlogin: @project[:login], htpassword: @project[:password], commit_id: "#{@branche[:commits][0]}" } }
+    launch_req = { vm: { project_id: @project[:id], vmsize_id: @project[:vmsizes][0], user_id: @user[:id], technos: @project[:technos], systemimage_id: @project[:systemimages][0], is_auth: true, is_prod: false, is_cached: false, is_backup: false, is_ci: false, is_ht: @project[:is_ht], layout: @user[:layout], htlogin: @project[:login], htpassword: @project[:password], commit_id: "#{@branche[:commits][0]}" } }
 
     response = @conn.post do |req|
       req.url "/api/v1/vms/short"
@@ -575,7 +575,7 @@ class NextDeploy < Thor
     # define some constants
     #
     def init_constants
-      @@version = "1.4"
+      @@version = "1.5"
       @@remote_cli = "http://cli.nextdeploy.io"
     end
 
