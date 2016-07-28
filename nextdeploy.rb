@@ -12,8 +12,179 @@ require 'uri'
 require 'socket'
 require 'open-uri'
 require 'net/ftp'
+require 'socket'
+require 'timeout'
 
 class NextDeploy < Thor
+  # Create docker stack for current project folder
+  #
+  desc "docker", "[BETA] launch containers for execute current project"
+  option :stop
+  option :ssh
+  option :reset
+  option :reinstall
+  option :restart
+  option :update
+  option :import
+  option :export
+  option :composersh
+  option :npmsh
+  def docker
+    # check folder => root of project
+    init
+
+    # ensure requirements
+    unless @project
+      warn("Git repository for #{gitpath} not found, have-you already import project ?")
+      warn("Please execute ndeploy clone first and go at the root of the project")
+      exit
+    end
+
+    unless Dir.exists?('.git')
+      warn("No .git folder, please go at the root of your project")
+      exit
+    end
+
+    # check if docker is already install
+    docker_check
+
+    rootFolder = Dir.pwd
+    reset = options[:reset] || options[:reinstall] ? true : false
+
+    docker_ssh if options[:ssh]
+    docker_import if options[:import]
+    docker_export if options[:export]
+    docker_update if options[:update]
+    docker_composersh(reset) if options[:composersh]
+    docker_npmsh(reset) if options[:npmsh]
+    exit unless options.empty? || options[:stop] || options[:restart] || options[:reinstall]
+
+    isimport = true
+    composerLines = []
+
+    if options[:stop] || options[:reinstall] || options[:restart]
+      # clean old containers
+      if File.exists?("#{rootFolder}/tmp/docker/docker#{@projectname}.yml")
+        # go to dockercompose folder
+        Dir.chdir("#{rootFolder}/tmp/docker")
+        # kill containers
+        system "docker-compose -p #{@projectname} -f docker#{@projectname}.yml stop"
+        system "docker-compose -p #{@projectname} -f docker#{@projectname}.yml rm -f -v --all"
+        system "rm -f docker#{@projectname}.yml"
+        Dir.chdir(rootFolder)
+      end
+
+      exit if options[:stop]
+      system 'rm -rf tmp' if options[:reinstall]
+    end
+
+    if File.exists?("#{rootFolder}/tmp/docker/docker#{@projectname}.yml")
+      warn("It seems containers already running for this project")
+      warn("Maybe you want kill them with 'ndeploy docker --stop'")
+      exit
+    end
+
+    port = 9181
+    while is_port_open?("127.0.0.1", port) do
+      port = port + 1
+    end
+
+    @endpoints.each do |ep|
+      containername = "ep_#{ep[:path]}_#{@projectname}"
+      envvars = ep[:envvars].split(' ').map { |ev| "    #{ev.sub('=',': ')}" }.join("\n")
+      dockercompose = ep[:dockercompose]
+      next if dockercompose.empty?
+      # replace container name, docroot, envvars and ports
+      dockercompose.gsub!('%%CONTAINERNAME%%', "#{containername}")
+      dockercompose.gsub!('%%DOCROOT%%', "#{Dir.pwd}/#{ep[:path]}")
+      dockercompose.gsub!('%%PORT%%', "#{port}")
+      dockercompose.gsub!('%%PORTEP%%', "#{ep[:port]}")
+      envvars = "  environment:\n#{envvars}" unless envvars.empty? || /environment:/.match(dockercompose)
+      dockercompose.gsub!('%%ENVVARS%%', envvars)
+      dockercompose.gsub!(/^$\n/, '')
+      dockercompose.gsub!('%%PROJECTNAME%%', @projectname)
+      dockercompose.gsub!('%%EPPATH%%', ep[:path])
+      # push into composerLines and containerList arrays
+      composerLines << dockercompose
+
+      port = port + 1
+      while is_port_open?("127.0.0.1", port) do
+        port = port + 1
+      end
+    end
+
+    # Ensure tmp is in gitignore
+    system 'grep -e ^/tmp$ .gitignore >/dev/null 2>&1 || echo -e "\n/tmp" >> .gitignore'
+    # Prepare folder for docker work
+    Dir.mkdir("#{rootFolder}/tmp") unless Dir.exists?("#{rootFolder}/tmp")
+
+    # get technos and frameworks
+    @technos.each do |techno|
+      dockercompose = techno[:dockercompose]
+      next if dockercompose.nil? || dockercompose.empty?
+      technoname = techno[:name].sub(/-.*$/,'').downcase
+      # dont import if datas already exists
+      if Dir.exists?("#{rootFolder}/tmp/#{technoname}")
+        isimport = false
+      else
+        Dir.mkdir("#{rootFolder}/tmp/#{technoname}")
+      end
+      containername = "#{technoname}_#{@projectname}"
+      dockercompose.gsub!('%%CONTAINERNAME%%', "#{containername}")
+      dockercompose.gsub!('%%TECHNOFOLDER%%', "#{rootFolder}/tmp/#{technoname}")
+      dockercompose.gsub!('%%PROJECTNAME%%', @projectname)
+      composerLines << dockercompose
+    end
+
+    begin
+      Dir.mkdir("#{rootFolder}/tmp/docker") unless Dir.exists?("#{rootFolder}/tmp/docker")
+      open("#{rootFolder}/tmp/docker/docker#{@projectname}.yml", File::RDWR|File::CREAT) do |f|
+        f.flock(File::LOCK_EX)
+        f.rewind
+        f.puts "version: '2'"
+        f.puts "services:"
+        f.puts composerLines.join("\n").gsub(/^/, '  ')
+        f.flush
+        f.truncate(f.pos)
+      end
+    rescue => me
+      warn("Create docker-composer file for #{@projectname} failed, #{me.message}")
+      exit
+    end
+
+    # Ensure we are back to root
+    Dir.chdir("#{rootFolder}")
+
+    docker_preinstall
+
+    # back to dockercompose folder
+    Dir.chdir("#{rootFolder}/tmp/docker")
+
+    # execute docker-compose
+    system "docker-compose -p #{@projectname} -f docker#{@projectname}.yml up -d"
+
+    # Back to root
+    Dir.chdir("#{rootFolder}")
+
+    docker_npmsh(reset)
+    docker_composersh(reset)
+    docker_postinstall
+    docker_import if isimport
+
+    # give endpoints output on terminal
+    @endpoints.each do |ep|
+      containername = "ep_#{ep[:path]}_#{@projectname}"
+      port = docker_getport(containername)
+      puts "Your #{ep[:path]} endpoint is reached on http://127.0.0.1:#{port}/"
+    end
+
+    # execute postinstall nextdeploy task
+    if isimport
+      Dir.chdir(rootFolder)
+      docker_postinstall_script
+    end
+  end
+
   # Print current version
   #
   desc "version", "print current version of ndeploy"
@@ -240,24 +411,24 @@ class NextDeploy < Thor
 
   # Launch a setted commit into a new vm on nextdeploy cloud
   #
-  desc "launch [projectname] [branch]", "launch [branch] (default is master) for [projectname] into a remote vm"
-  def launch(projectname=nil, branch='master')
+  desc "launch [name] [branch]", "launch [branch] (default is master) for [name] into a remote vm"
+  def launch(name=nil, branch='master')
     init
 
     # ensure requirements
-    error("Argument projectname is missing") unless projectname
+    error("Argument name is missing") unless name
     error("No projects for #{@user[:email]}") if @projects.empty?
 
     # select project following parameter
-    proj = @projects.select { |p| p[:name] == projectname }
+    proj = @projects.select { |p| p[:name] == name }
     # return if parameter is invalid
-    error("Project #{projectname} not found") if !proj || proj.empty?
+    error("Project #{name} not found") if !proj || proj.empty?
     @project = proj[0]
 
     # get branch from api server
     get_branche(branch)
     error("Branch #{branch} not found") if !@branche
-    
+
     # prepare post request
     launch_req = { vm: { project_id: @project[:id], vmsize_id: @project[:vmsizes][0], user_id: @user[:id], technos: @project[:technos], systemimage_id: @project[:systemimages][0], is_auth: true, is_prod: false, is_cached: false, is_backup: false, is_ci: false, is_ht: @project[:is_ht], layout: @user[:layout], htlogin: @project[:login], htpassword: @project[:password], commit_id: "#{@branche[:commits][0]}" } }
 
@@ -339,18 +510,18 @@ class NextDeploy < Thor
 
   # Clone a project by his name
   #
-  desc "clone [projectname]", "clone project in current folder"
-  def clone(projectname=nil)
+  desc "clone [name]", "clone project in current folder"
+  def clone(name=nil)
     init
 
     # ensure requirements
-    error("Argument projectname is missing") unless projectname
+    error("Argument name is missing") unless name
     error("No projects for #{@user[:email]}") if @projects.empty?
 
     # select project following parameter
-    proj = @projects.select { |p| p[:name] == projectname }
+    proj = @projects.select { |p| p[:name] == name }
     # return if parameter is invalid
-    error("Project #{projectname} not found") if !proj || proj.empty?
+    error("Project #{name} not found") if !proj || proj.empty?
     # else clone the project
     @project = proj[0]
     exec "git clone git@#{@project[:gitpath]}"
@@ -422,22 +593,22 @@ class NextDeploy < Thor
   desc "putftp assets|dump [--branch b] [--pathuri p] [project] [file]", "putftp an assets archive [file] or a dump [file] for the [project]"
   option :branch
   option :pathuri
-  def putftp(typefile=nil, projectname=nil, file=nil)
+  def putftp(typefile=nil, name=nil, file=nil)
     init
 
     # ensure requirement
     error("You must provide type of file to push: assets or dump") unless typefile
     error("You must provide type of file to push: assets or dump") if typefile == 'backup'
-    error("Argument projectname is missing") unless projectname
+    error("Argument name is missing") unless name
     error("File to push is missing") unless file
     error("No projects for #{@user[:email]}") if @projects.empty?
 
     # rename file or let as it is
     isrename = (options[:branch] && options[:pathuri]) ? true : false
     # select project following parameter
-    proj = @projects.select { |p| p[:name] == projectname }
+    proj = @projects.select { |p| p[:name] == name }
     # return if parameter is invalid
-    error("Project #{projectname} not found") if !proj || proj.empty?
+    error("Project #{name} not found") if !proj || proj.empty?
     @project = proj[0]
 
     if typefile == 'assets'
@@ -470,18 +641,18 @@ class NextDeploy < Thor
   # Download an asset archive or a sql/mongo dump from ftp repository dedicated to project
   #
   desc "getftp assets|dump|backup [project] [file]", "get an assets archive or a dump (file or default) for the [project]"
-  def getftp(typefile=nil, projectname=nil, file=nil)
+  def getftp(typefile=nil, name=nil, file=nil)
     init
 
     # ensure requirement
     error("You must provide type of file to push: assets, backup or dump") unless typefile
-    error("Argument projectname is missing") unless projectname
+    error("Argument name is missing") unless name
     error("No projects for #{@user[:email]}") if @projects.empty?
 
     # select project following parameter
-    proj = @projects.select { |p| p[:name] == projectname }
+    proj = @projects.select { |p| p[:name] == name }
     # return if parameter is invalid
-    error("Project #{projectname} not found") if !proj || proj.empty?
+    error("Project #{name} not found") if !proj || proj.empty?
 
     @project = proj[0]
     (typefile == 'assets') ? (ftp_filename = 'default_server_assets.tar.gz') : (ftp_filename = 'default_server.sql.gz')
@@ -500,18 +671,18 @@ class NextDeploy < Thor
   # List asset archive or a sql/mongo dump from ftp repository dedicated to project
   #
   desc "listftp assets|dump|backup [project]", "list assets archive or a dump for the [project]"
-  def listftp(typefile=nil, projectname=nil, file=nil)
+  def listftp(typefile=nil, name=nil, file=nil)
     init
 
     # ensure requirement
     error("You must provide type of file to push: assets or dump") unless typefile
-    error("Argument projectname is missing") unless projectname
+    error("Argument name is missing") unless name
     error("No projects for #{@user[:email]}") if @projects.empty?
 
     # select project following parameter
-    proj = @projects.select { |p| p[:name] == projectname }
+    proj = @projects.select { |p| p[:name] == name }
     # return if parameter is invalid
-    error("Project #{projectname} not found") if !proj || proj.empty?
+    error("Project #{name} not found") if !proj || proj.empty?
     @project = proj[0]
 
     login_ftp = @project[:gitpath].gsub(/^.*\//, '')
@@ -575,7 +746,7 @@ class NextDeploy < Thor
     # define some constants
     #
     def init_constants
-      @@version = "1.5"
+      @@version = "1.6"
       @@remote_cli = "http://cli.nextdeploy.io"
     end
 
@@ -659,7 +830,7 @@ class NextDeploy < Thor
       "#{@project[:id]}-#{currentbranch}-#{currentcommit}"
     end
 
-    # Get current project follow the gitpath value
+    # Get current project, technos and endpoints follow the gitpath value
     #
     # No params
     # @return [Array[String]] json output for a project
@@ -676,10 +847,43 @@ class NextDeploy < Thor
 
       if response.body == "null"
         @project = {}
+        @endpoints = []
         return
       end
 
+      # Init project global variable
       @project = json(response.body)[:project]
+      @projectname = @project[:name].gsub(/[\._-]/, '').gsub(/www/, '')
+
+      # Init endpoints global array
+      @endpoints = @project[:endpoints].map do |ep_id|
+        respep = @conn.get do |req|
+          req.url "/api/v1/endpoints/#{ep_id}"
+          req.headers = rest_headers
+        end
+
+        ep = json(respep.body)[:endpoint]
+
+        respframework = @conn.get do |req|
+          req.url "/api/v1/frameworks/#{ep[:framework]}"
+          req.headers = rest_headers
+        end
+        framework = json(respframework.body)[:framework]
+        ep[:frameworkname] = framework[:name]
+        ep[:dockercompose] = framework[:dockercompose]
+
+        ep
+      end
+
+      # Init technos global array
+      @technos = @project[:technos].map do |techno_id|
+        resptechno = @conn.get do |req|
+          req.url "/api/v1/technos/#{techno_id}"
+          req.headers = rest_headers
+        end
+
+        techno = json(resptechno.body)[:techno]
+      end
     end
 
     # Get branch object
@@ -687,7 +891,7 @@ class NextDeploy < Thor
     # No params
     # @return [Array[String]] json output for a branch
     def get_branche(branch='master')
-      
+
       response = @conn.get do |req|
         req.url "/api/v1/branches/#{@project[:id]}-#{branch}"
         req.headers = rest_headers
@@ -850,6 +1054,291 @@ class NextDeploy < Thor
       @systems = json(response.body)[:systemimages]
     end
 
+    def docker_ssh
+      puts "ssh"
+    end
+
+    def docker_pull
+      system 'git pull --rebase'
+      docker_composersh
+      docker_npmsh
+      docker_postinstall
+    end
+
+    def docker_composersh(reset=false)
+      rootFolder = Dir.pwd
+
+      @endpoints.each do |ep|
+        containername = "ep_#{ep[:path]}_#{@projectname}"
+        Dir.chdir("#{rootFolder}/#{ep[:path]}")
+        system "docker run -v=#{Dir.pwd}:/app -w /app nextdeploy/composersh --reset #{reset}"
+
+        docker_reset_permissions(containername)
+      end
+
+      Dir.chdir(rootFolder)
+    end
+
+    def docker_npmsh(reset=false)
+      rootFolder = Dir.pwd
+
+      @endpoints.each do |ep|
+        containername = "ep_#{ep[:path]}_#{@projectname}"
+        Dir.chdir("#{rootFolder}/#{ep[:path]}")
+        system "docker run -v #{Dir.pwd}:/app -w /app nextdeploy/npmsh --reset #{reset}"
+
+        docker_reset_permissions(containername)
+      end
+
+      Dir.chdir(rootFolder)
+    end
+
+    def docker_import
+      rootFolder = Dir.pwd
+      ismysql = '0'
+      ismongo = '0'
+
+      # get technos
+      @technos.each do |techno|
+        technoname = techno[:name].sub(/-.*$/,'').downcase
+        ismysql = '1' if /mysql/.match(technoname)
+        ismongo = '1' if /mongo/.match(technoname)
+      end
+
+      @endpoints.each do |ep|
+        framework = ep[:frameworkname]
+
+        containername = "ep_#{ep[:path]}_#{@projectname}"
+        Dir.chdir("#{rootFolder}/#{ep[:path]}")
+
+        login_ftp = @project[:gitpath].gsub(/^.*\//, '')
+        password_ftp = @project[:password]
+        port = docker_getport(containername)
+        system "docker run --net=#{@projectname}_default -v=#{rootFolder}:/app nextdeploy/import --uri 127.0.0.1:#{port} --path #{ep[:path]} --framework #{framework.downcase} --ftpuser #{login_ftp} --ftppasswd #{password_ftp} --ftphost #{@ftpendpoint} --ismysql #{ismysql} --ismongo #{ismongo} --projectname #{@projectname}"
+
+        docker_reset_permissions(containername)
+      end
+
+      Dir.chdir(rootFolder)
+    end
+
+    def docker_export
+      rootFolder = Dir.pwd
+      ismysql = '0'
+      ismongo = '0'
+
+      # get technos
+      @technos.each do |techno|
+        technoname = techno[:name].sub(/-.*$/,'').downcase
+        ismysql = '1' if /mysql/.match(technoname)
+        ismongo = '1' if /mongo/.match(technoname)
+      end
+
+      @endpoints.each do |ep|
+        framework = ep[:frameworkname]
+
+        containername = "ep_#{ep[:path]}_#{@projectname}"
+        Dir.chdir("#{rootFolder}/#{ep[:path]}")
+
+        login_ftp = @project[:gitpath].gsub(/^.*\//, '')
+        password_ftp = @project[:password]
+        system "docker run --net=#{@projectname}_default -v=#{rootFolder}:/app nextdeploy/export --uri 127.0.0.1:#{port} --path #{ep[:path]} --framework #{framework.downcase} --ftpuser #{login_ftp} --ftppasswd #{password_ftp} --ftphost #{@ftpendpoint} --ismysql #{ismysql} --ismongo #{ismongo} --projectname #{@projectname}"
+      end
+
+      Dir.chdir(rootFolder)
+    end
+
+    # Execute preinstall task
+    #
+    def docker_preinstall
+      rootFolder = Dir.pwd
+
+      # execute preinstall cmds
+      @endpoints.each do |ep|
+        framework = ep[:frameworkname]
+        containername = "ep_#{ep[:path]}_#{@projectname}"
+        Dir.chdir("#{rootFolder}/#{ep[:path]}")
+
+        case framework
+        when /Symfony/
+          port = docker_getport(containername)
+          docker_preinstall_sf2(port, ep[:path])
+        when /Wordpress/
+          docker_preinstall_wp
+        end
+      end
+
+      Dir.chdir(rootFolder)
+    end
+
+    # Preinstall cmds for wordpress
+    #
+    def docker_preinstall_wp
+      # move wp-content for avoid replace it
+      system "mv wp-content git-wp-content" unless File.exists?("wp-includes/version.php")
+    end
+
+    # Preinstall cmds for symfony2
+    #
+    def docker_preinstall_sf2(port, dbname)
+      Dir.chdir('app/config')
+      system 'cp parameters.yml.dist parameters.yml'
+      system "perl -pi -e 's/base_hostname:.*$/base_hostname: \'127.0.0.1:#{port}\'/' parameters.yml"
+      system "perl -pi -e 's/base_domain:.*$/base_domain: \'127.0.0.1:#{port}\'/' parameters.yml"
+
+      @technos.each do |techno|
+        technoname = techno[:name].sub(/-.*$/,'').downcase
+        containername = "#{technoname}_#{@projectname}"
+
+        if /mysql/.match(containername)
+          system "perl -pi -e 's/database_host:.*$/database_host: #{containername}/' parameters.yml"
+          system "perl -pi -e 's/database_name:.*$/database_name: #{dbname}/' parameters.yml"
+          system 'perl -pi -e "s/database_user:.*$/database_user: root/" parameters.yml'
+          system 'perl -pi -e "s/database_password:.*$/database_password: 8to9or1/" parameters.yml'
+        end
+
+        system "perl -pi -e 's/es_host:.*$/es_host: #{containername}/' parameters.yml" if /elasticsearch/.match(containername)
+        system "perl -pi -e 's/amqp_host:.*$/amqp_host: #{containername}/' parameters.yml" if /rabbitmq/.match(containername)
+        system "perl -pi -e 's;kibana_url:.*$;kibana_host: \'http://#{containername}/app/kibana\';' parameters.yml" if /kibana/.match(containername)
+      end
+
+      @endpoints.each do |ep|
+        containername = "ep_#{ep[:path]}_#{@projectname}"
+        containerpath = containername.sub(/^ep_/, '').sub(/_.*$/, '')
+        system "perl -pi -e 's/#{containerpath}_host:.*$/#{containerpath}_host: #{containername}/' parameters.yml"
+      end
+
+      Dir.chdir('../..')
+    end
+
+    # Execute postinstall task
+    #
+    def docker_postinstall
+      rootFolder = Dir.pwd
+
+      # execute preinstall cmds
+      @endpoints.each do |ep|
+        framework = ep[:frameworkname]
+        containername = "ep_#{ep[:path]}_#{@projectname}"
+        Dir.chdir("#{rootFolder}/#{ep[:path]}")
+
+        # execute framework specific script
+        case framework
+        when /Symfony/
+          docker_postinstall_sf2("ep_#{ep[:path]}_#{@projectname}", framework.downcase)
+        when /Drupal/
+          docker_postinstall_drupal("ep_#{ep[:path]}_#{projectname}", ep[:path])
+        when /Wordpress/
+          port = docker_getport(containername)
+          docker_postinstall_wp("ep_#{ep[:path]}_#{projectname}", port)
+        end
+
+        docker_reset_permissions(containername)
+      end
+
+      Dir.chdir(rootFolder)
+    end
+
+    # Postinstall cmds for drupal project
+    #
+    def docker_postinstall_drupal(containername, dbname)
+      docker_waiting_containers
+      puts "Install Drupal Website"
+      email = @user[:email]
+      system "docker run --net=#{@projectname}_default  -v=#{Dir.pwd}:/app nextdeploy/drush -y site-install --locale=en --db-url=mysqli://root:8to9or1@mysql_#{@projectname}:3306/#{dbname} --account-pass=admin --site-name=#{@projectname} --account-mail=#{email} --site-mail=#{email} standard"
+    end
+
+    # Postinstall cmds for wordpress
+    #
+    def docker_postinstall_wp(containername, port)
+      # Ugly hack because wordpress docker image
+      if Dir.exists?("git-wp-content")
+        system "rm -rf wp-content"
+        system "mv git-wp-content wp-content"
+      end
+
+      docker_waiting_containers
+      email = @user[:email]
+      system "docker run --net=#{@projectname}_default  -v=#{Dir.pwd}:/app nextdeploy/wp core install --url=http://127.0.0.1:#{port}/ --title=#{@projectname} --admin_user=admin --admin_password=admin --admin_email=#{email}"
+    end
+
+    # Postinstall cmds for symfony2 project
+    #
+    def docker_postinstall_sf2(containername, framework)
+      # wiating mariadb container is up
+      docker_waiting_containers
+      docroot = Dir.pwd
+
+      # Ensure that the first composer has finish before launch symfony commands
+      until File.exist?("app/bootstrap.php.cache") do
+        puts "Waiting composer finished his work ....."
+        sleep 5
+      end
+
+      puts "Install symfony website"
+      # install and configure doctrine database
+      system "docker run --net=#{@projectname}_default -v=#{docroot}:/var/www/html nextdeploy/#{framework}console doctrine:database:drop --force >/dev/null 2>/dev/null"
+      system "docker run --net=#{@projectname}_default -v=#{docroot}:/var/www/html nextdeploy/#{framework}console doctrine:database:create"
+      system "docker run --net=#{@projectname}_default -v=#{docroot}:/var/www/html nextdeploy/#{framework}console doctrine:schema:update --force"
+      system "docker run --net=#{@projectname}_default -v=#{docroot}:/var/www/html nextdeploy/#{framework}console assets:install --symlink"
+    end
+
+    # Execute postinstall script
+    #
+    def docker_postinstall_script
+      system "docker run --net=#{@projectname}_default -v=#{Dir.pwd}:/app nextdeploy/postinstall"
+    end
+
+    # Reset permission on docroot for container identified by containername
+    #
+    def docker_reset_permissions(containername)
+      system "docker exec #{containername} /bin/bash -c '[[ -d /var/www/html ]] && chown -R 1000:1000 /var/www/html;[[ -d /app ]] && chown -R 1000:1000 /app'"
+    end
+
+    # Get Exposed Port from container name
+    #
+    def docker_getport(containername)
+      %x{docker ps --filter name=#{containername} --format "{{.Ports}}" | sed "s;->.*$;;" | sed "s;^.*:;;" | head -n 1 | tr -d "\n"}
+    end
+
+    # Docker check
+    #
+    def docker_check
+      if File.exists?('/usr/local/bin/docker-compose') || File.exists?('/usr/bin/docker-compose')
+        if File.exists?('/usr/bin/sw_vers')
+          puts "Please ensure that you have docker >= 1.12"
+          system 'docker version | grep Version | head -n 1'
+          sleep 1
+        end
+      else
+        docker_install
+      end
+    end
+
+    # Docker install
+    #
+    def docker_install
+      currentFolder = Dir.pwd
+      puts "Docker Installation ..."
+      Dir.chdir('/tmp')
+      if File.exists?('/usr/bin/sw_vers')
+        system 'curl -OsSL "https://download.docker.com/mac/beta/Docker.dmg"'
+        system 'hdiutil mount Docker.dmg'
+        system 'sudo mv /Volumes/Docker/Docker.app /Applications/'
+        system 'rm -f Docker.dmg'
+      else
+        system 'wget -qO- https://get.docker.com/ | sudo sh'
+      end
+      Dir.chdir(currentFolder)
+    end
+
+    # Waiting mariadb is up
+    #
+    def docker_waiting_containers
+      puts "Waiting containers are up ..."
+      sleep 20
+    end
+
     # Helper function for parse json call
     #
     # @param body [String] the json on input
@@ -868,6 +1357,25 @@ class NextDeploy < Thor
     #
     def rest_headers
       { 'Accept' => 'application/json', 'Content-Type' => 'application/json', 'Authorization' => "Token token=#{@user[:authentication_token]}" }
+    end
+
+    # Return true if the port is open
+    #
+    def is_port_open?(ip, port)
+      begin
+        Timeout::timeout(1) do
+          begin
+            s = TCPSocket.new(ip, port)
+            s.close
+            return true
+          rescue Errno::ECONNREFUSED, Errno::EHOSTUNREACH
+            return false
+          end
+        end
+      rescue Timeout::Error
+      end
+
+      return false
     end
 
     # Puts errors on the output
