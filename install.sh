@@ -20,10 +20,10 @@ install-cli() {
     fi
 
     # fedora, install ruby package if needed
-    if [[ -f /etc/fedora_release ]]; then
+    if [[ -f /etc/fedora-release ]]; then
       [[ -n "$(whereis gem | sed "s;gem:;;" | tr -d "\n")" ]] || sudo dnf install -y ruby rubygems
-      sudo dnf install -y ruby-dev
-      gem install bundler >install.log 2>&1
+      sudo dnf install -y ruby-devel
+      sudo gem install bundler >install.log 2>&1
     fi
 
     # for macos, install xcode
