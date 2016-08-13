@@ -19,16 +19,33 @@ class NextDeploy < Thor
   # Create docker stack for current project folder
   #
   desc "docker", "[BETA] launch containers for execute current project"
-  option :stop
+  long_desc <<-LONGDESC
+    `ndeploy docker` will launch containers for execute current project\n
+    `ndeploy docker --ssh` will ssh into container\n
+    `ndeploy docker --stop` will stop containers for current project\n
+    `ndeploy docker --rebuild` will rebuild (composer, npm, clear caches, ...) current project\n
+    `ndeploy docker --reinstall` will completely reinstall containers for current project\n
+    `ndeploy docker --restart` will restart containers for current project\n
+    `ndeploy docker --update` will execute gitpull and some update commands for current project\n
+    `ndeploy docker --cc` will flush caches for current project\n
+    `ndeploy docker --composersh` will execute "composer install" for current project\n
+    `ndeploy docker --npmsh` will execute javascripts install commands (npm, gulp, grunt) for current project\n
+    `ndeploy docker --console` will execute framework commands (console, drush, wp, ...) for current project\n
+    `ndeploy docker --import` will import datas from NextDeploy ftp repository\n
+    `ndeploy docker --export` will export containers datas to NextDeploy ftp repository\n
+  LONGDESC
   option :ssh
-  option :reset
+  option :stop
+  option :rebuild
   option :reinstall
   option :restart
   option :update
-  option :import
-  option :export
+  option :cc
   option :composersh
   option :npmsh
+  option :console
+  option :import
+  option :export
   def docker
     # check folder => root of project
     init
@@ -49,7 +66,7 @@ class NextDeploy < Thor
     docker_check
 
     rootFolder = Dir.pwd
-    reset = options[:reset] || options[:reinstall] ? true : false
+    reset = options[:rebuild] || options[:reinstall] ? true : false
 
     docker_ssh if options[:ssh]
     docker_import if options[:import]
@@ -57,10 +74,14 @@ class NextDeploy < Thor
     docker_update if options[:update]
     docker_composersh(reset) if options[:composersh]
     docker_npmsh(reset) if options[:npmsh]
+    docker_rebuild if options[:rebuild]
+    docker_console if options[:console]
+    docker_cc if options[:cc]
     exit unless options.empty? || options[:stop] || options[:restart] || options[:reinstall]
 
     isimport = true
     composerLines = []
+    containerPorts = {}
 
     if options[:stop] || options[:reinstall] || options[:restart]
       # clean old containers
@@ -84,6 +105,7 @@ class NextDeploy < Thor
       exit
     end
 
+    local_ip = get_docker_ip
     port = 9181
     while is_port_open?("127.0.0.1", port) do
       port = port + 1
@@ -94,6 +116,7 @@ class NextDeploy < Thor
       envvars = ep[:envvars].split(' ').map { |ev| "    #{ev.sub('=',': ')}" }.join("\n")
       dockercompose = ep[:dockercompose]
       next if dockercompose.empty?
+      containerPorts["#{containername}"] = port
       # replace container name, docroot, envvars and ports
       dockercompose.gsub!('%%CONTAINERNAME%%', "#{containername}")
       dockercompose.gsub!('%%DOCROOT%%', "#{Dir.pwd}/#{ep[:path]}")
@@ -111,6 +134,14 @@ class NextDeploy < Thor
       while is_port_open?("127.0.0.1", port) do
         port = port + 1
       end
+    end
+
+    # replace endpoints host into composer template
+    @endpoints.each do |ep|
+      containername = "ep_#{ep[:path]}_#{@projectname}"
+      port = containerPorts["#{containername}"]
+      eppath = ep[:path].upcase
+      composerLines.map! { |cl| cl.gsub("%{URI_#{eppath}}", "#{local_ip}").gsub("%{PORT_#{eppath}}", "#{port}") }
     end
 
     # Ensure tmp is in gitignore
@@ -156,6 +187,7 @@ class NextDeploy < Thor
     Dir.chdir("#{rootFolder}")
 
     docker_preinstall
+    docker_npmsh(reset)
 
     # back to dockercompose folder
     Dir.chdir("#{rootFolder}/tmp/docker")
@@ -166,7 +198,6 @@ class NextDeploy < Thor
     # Back to root
     Dir.chdir("#{rootFolder}")
 
-    docker_npmsh(reset)
     docker_composersh(reset)
     docker_postinstall
     docker_import if isimport
@@ -206,6 +237,10 @@ class NextDeploy < Thor
   # upgrade ndeploy
   #
   desc "upgrade [--force]", "upgrade ndeploy with the last version"
+  long_desc <<-LONGDESC
+    `ndeploy upgrade` upgrade ndeploy with the last version if needed\n
+    `ndeploy upgrade --force` reinstall ndeploy with last version\n
+  LONGDESC
   option :force
   def upgrade
     init_constants
@@ -221,7 +256,10 @@ class NextDeploy < Thor
 
   # Launch current commit into a new vms on nextdeploy cloud
   #
-  desc "up", "launch current commit to remote nextdeploy"
+  desc "up", "launch a new vm with current commit (in current folder)"
+  long_desc <<-LONGDESC
+    `ndeploy up` launch a new vm with current commit. So, this command checks that we are into a project folder.\n
+  LONGDESC
   def up
     init
 
@@ -245,7 +283,10 @@ class NextDeploy < Thor
 
   # Display logs for a vm
   #
-  desc "logs [idvm]", "Display some logs for vm identified by [idvm] (view ndeploy list), or current vm or last vm by default (if idvm is missing)"
+  desc "logs [idvm]", "Display some logs for a vm"
+  long_desc <<-LONGDESC
+    `ndeploy logs [idvm]`  Display some logs for a vm identified by [idvm] (view ndeploy list). And if [idvm] is missing, this command displays logs for last vm\n
+  LONGDESC
   def logs(idvm=nil)
     logs = []
     init
@@ -280,7 +321,10 @@ class NextDeploy < Thor
 
   # Display details for a vm
   #
-  desc "details [idvm]", "Display some details for vm identified by [idvm] (view ndeploy list), or current vm or last vm by default (if idvm is missing)"
+  desc "details [idvm]", "Display some details for a vm"
+  long_desc <<-LONGDESC
+    `ndeploy details [idvm]`  Display some details for a vm identified by [idvm] (view ndeploy list). And if [idvm] is missing, this command displays details for last vm\n
+  LONGDESC
   def details(idvm=nil)
     init
 
@@ -360,7 +404,10 @@ class NextDeploy < Thor
 
   # Share project folder from vm to local computer
   #
-  desc "folder [idvm] [workspace]", "share project folder from vm identified by [idvm] (see ndeploy list), to local created folder (parent is current directory or [workspace] parameter)"
+  desc "folder [idvm] [workspace]", "Share project folder from a vm"
+  long_desc <<-LONGDESC
+    `ndeploy folder [idvm] [workspace]`  Share project folder from vm identified by [idvm] (see ndeploy list), to local folder. The parent of this last one is current directory by default or [workspace]\n
+  LONGDESC
   def folder(idvm=nil, workspace=nil)
     init
 
@@ -411,7 +458,10 @@ class NextDeploy < Thor
 
   # Launch a setted commit into a new vm on nextdeploy cloud
   #
-  desc "launch [name] [branch]", "launch [branch] (default is master) for [name] into a remote vm"
+  desc "launch [name] [branch]", "Launch a new vm"
+  long_desc <<-LONGDESC
+    `ndeploy launch [name] [branch]`  launch [branch] (default is master) for project [name] into a new vm\n
+  LONGDESC
   def launch(name=nil, branch='master')
     init
 
@@ -443,7 +493,10 @@ class NextDeploy < Thor
 
   # Destroy a vm
   #
-  desc "destroy [idvm]", "destroy remote vm wit [idvm] (see ndeploy list) current vm by default"
+  desc "destroy [idvm]", "destroy a vm"
+  long_desc <<-LONGDESC
+    `ndeploy destroy [idvm]`  destroy a vm identified by [idvm] (see ndeploy list)\n
+  LONGDESC
   def destroy(idvm=nil)
     init
 
@@ -467,6 +520,11 @@ class NextDeploy < Thor
   # List current active vms
   #
   desc "list [--all] [--head n]", "list launched vms for current user."
+  long_desc <<-LONGDESC
+    `ndeploy list`  list launched vms for current user\n
+    `ndeploy list --all`  list launched vms for all users in our scope (relevant only for "project lead" or "admin" users)\n
+    `ndeploy list --head n`  display only the 'n' last vms\n
+  LONGDESC
   option :all
   option :head
   def list
@@ -572,7 +630,10 @@ class NextDeploy < Thor
 
   # Ssh into remote vm
   #
-  desc "ssh [idvm]", "ssh into remote vm with [idvm] (view ndeploy list) or current vm by default"
+  desc "ssh [idvm]", "ssh into a vm"
+  long_desc <<-LONGDESC
+    `ndeploy ssh [idvm]`  ssh into a vm identified by [idvm] (view ndeploy list). If [idvm] is missing, the last vm is the default one\n
+  LONGDESC
   def ssh(idvm=nil)
     init
 
@@ -590,7 +651,10 @@ class NextDeploy < Thor
 
   # Upload an asset archive or a sql/mongo dump onto ftp repository dedicated to project
   #
-  desc "putftp assets|dump [--branch b] [--pathuri p] [project] [file]", "putftp an assets archive [file] or a dump [file] for the [project]"
+  desc "putftp assets|dump [project] [file]", "Put a file onto project ftp"
+  long_desc <<-LONGDESC
+    `ndeploy putftp assets|dump [--branch b] [--pathuri p] [project] [file]`  put an assets archive [file] or a dump [file] for the [project]. The option [pathuri] specifies the endpoint (a project can have multiple endpoints). The option [branch] specifies the branch targetting the file (we can have assets or dump for each branch). If these 2 last options are indicated, the filename is automatically well renamed.\n
+  LONGDESC
   option :branch
   option :pathuri
   def putftp(typefile=nil, name=nil, file=nil)
@@ -640,7 +704,10 @@ class NextDeploy < Thor
 
   # Download an asset archive or a sql/mongo dump from ftp repository dedicated to project
   #
-  desc "getftp assets|dump|backup [project] [file]", "get an assets archive or a dump (file or default) for the [project]"
+  desc "getftp assets|dump|backup [project] [file]", "Get a file from project ftp"
+  long_desc <<-LONGDESC
+    `ndeploy getftp assets|dump|backup [project] [file]`  Get an assets archive, a database dump, or a backup for the [project].\n
+  LONGDESC
   def getftp(typefile=nil, name=nil, file=nil)
     init
 
@@ -670,7 +737,10 @@ class NextDeploy < Thor
 
   # List asset archive or a sql/mongo dump from ftp repository dedicated to project
   #
-  desc "listftp assets|dump|backup [project]", "list assets archive or a dump for the [project]"
+  desc "listftp assets|dump|backup [project]", "List files from project ftp"
+  long_desc <<-LONGDESC
+    `ndeploy listftp assets|dump|backup [project]`  List assets archive, backup, or a database dump for the [project].\n
+  LONGDESC
   def listftp(typefile=nil, name=nil, file=nil)
     init
 
@@ -1054,17 +1124,173 @@ class NextDeploy < Thor
       @systems = json(response.body)[:systemimages]
     end
 
+    # Ssh to conainer
+    #
+    #
     def docker_ssh
-      puts "ssh"
+      index = 0
+      choice = '0'
+      choices = []
+      sentence = ""
+
+      index = 0
+      @endpoints.each do |ep|
+        framework = ep[:frameworkname]
+        containername = "ep_#{ep[:path]}_#{@projectname}"
+        sentence << "[#{index}] - #{containername} \n"
+        choices << "#{index}"
+        index = index + 1
+      end
+
+      # if only one endpoint, ssh into in without prompt
+      choice = ask("Which endpoint ?\n#{sentence}", limited_to: choices) unless index == 1
+
+      index = 0
+      @endpoints.each do |ep|
+        if choice.to_i == index
+          framework = ep[:frameworkname]
+          containername = "ep_#{ep[:path]}_#{@projectname}"
+          exec "docker exec -i -t #{containername} /bin/bash"
+        end
+        index = index + 1
+      end
     end
 
+    # Ssh to conainer
+    #
+    #
+    def docker_console
+      index = 0
+      choice = '0'
+      choices = []
+      sentence = ""
+      rootFolder = Dir.pwd
+
+      index = 0
+      @endpoints.each do |ep|
+        framework = ep[:frameworkname]
+        containername = "ep_#{ep[:path]}_#{@projectname}"
+        sentence << "[#{index}] - #{containername} \n"
+        choices << "#{index}"
+        index = index + 1
+      end
+
+      # if only one endpoint, ssh into in without prompt
+      choice = ask("Which endpoint ?\n#{sentence}", limited_to: choices) unless index == 1
+
+      index = 0
+      @endpoints.each do |ep|
+        if choice.to_i == index
+          Dir.chdir("#{rootFolder}/#{ep[:path]}")
+          framework = ep[:frameworkname]
+          containername = "ep_#{ep[:path]}_#{@projectname}"
+          cmd = ask("Which console command (#{framework}) ?\nno need to specify binary, only parameters\n")
+          cmd.gsub!('/usr/bin/', '')
+          cmd.gsub!('/usr/local/bin/', '')
+          cmd.gsub!('/bin/', '')
+          cmd.gsub!(/php ?/, '')
+          # execute framework specific updb
+          case framework
+          when /Symfony/
+            cmd.gsub!('bin/console', '')
+            cmd.gsub!('app/console', '')
+            system "docker run --net=#{@projectname}_default -v=#{Dir.pwd}:/var/www/html nextdeploy/#{framework.downcase}console #{cmd}"
+          when /Drupal/
+            cmd.gsub!('drush', '')
+            system "docker run --net=#{@projectname}_default  -v=#{Dir.pwd}:/app nextdeploy/drush -y #{cmd} 2>/dev/null"
+          when /Wordpress/
+            cmd.gsub!('wp.phar', '')
+            cmd.gsub!('wp', '')
+            system "docker run --net=#{@projectname}_default  -v=#{Dir.pwd}:/app nextdeploy/wp #{cmd}"
+          end
+
+          docker_reset_permissions(containername)
+        end
+        index = index + 1
+      end
+
+      Dir.chdir("#{rootFolder}")
+    end
+
+    # Update project containers
+    #
+    #
     def docker_pull
       system 'git pull --rebase'
       docker_composersh
       docker_npmsh
-      docker_postinstall
+      docker_updb
     end
 
+    # Rebuild modules, launche updb and clear caches
+    #
+    #
+    def docker_rebuild
+      docker_composersh(true)
+      docker_npmsh(true)
+      docker_updb
+    end
+
+    # Launch updb (update data models) for the project
+    #
+    #
+    def docker_updb
+      rootFolder = Dir.pwd
+
+      # execute updb cmds for each endpoints
+      @endpoints.each do |ep|
+        framework = ep[:frameworkname]
+        containername = "ep_#{ep[:path]}_#{@projectname}"
+        Dir.chdir("#{rootFolder}/#{ep[:path]}")
+
+        # execute framework specific updb
+        case framework
+        when /Symfony/
+          system "docker run --net=#{@projectname}_default -v=#{Dir.pwd}:/var/www/html nextdeploy/#{framework}console doctrine:schema:update --force"
+        when /Drupal/
+          system "docker run --net=#{@projectname}_default  -v=#{Dir.pwd}:/app nextdeploy/drush -y updb"
+        end
+      end
+      Dir.chdir(rootFolder)
+
+      docker_cc
+    end
+
+    # Clear application caches
+    #
+    #
+    def docker_cc
+      rootFolder = Dir.pwd
+
+      # execute updb cmds for each endpoints
+      @endpoints.each do |ep|
+        framework = ep[:frameworkname]
+        containername = "ep_#{ep[:path]}_#{@projectname}"
+        Dir.chdir("#{rootFolder}/#{ep[:path]}")
+
+        # execute framework specific updb
+        case framework
+        when /Symfony/
+          system "docker run --net=#{@projectname}_default -v=#{Dir.pwd}:/var/www/html nextdeploy/#{framework}console cache:clear --env=prod 2>/dev/null"
+          system "docker run --net=#{@projectname}_default -v=#{Dir.pwd}:/var/www/html nextdeploy/#{framework}console cache:clear --env=dev 2>/dev/null"
+          system "docker run --net=#{@projectname}_default -v=#{Dir.pwd}:/var/www/html nextdeploy/#{framework}console assets:install --symlink"
+          system "docker run --net=#{@projectname}_default -v=#{Dir.pwd}:/var/www/html nextdeploy/#{framework}console assetic:dump >/dev/null 2>/dev/null"
+        when /Drupal/
+          system "docker run --net=#{@projectname}_default  -v=#{Dir.pwd}:/app nextdeploy/drush -y cc --all 2>/dev/null"
+          system "docker run --net=#{@projectname}_default  -v=#{Dir.pwd}:/app nextdeploy/drush -y cr 2>/dev/null"
+        when /Wordpress/
+          system "docker run --net=#{@projectname}_default  -v=#{Dir.pwd}:/app nextdeploy/wp cache flush"
+        end
+
+        docker_reset_permissions(containername)
+      end
+
+      Dir.chdir(rootFolder)
+    end
+
+    # Launch composer install recursive script
+    #
+    #
     def docker_composersh(reset=false)
       rootFolder = Dir.pwd
 
@@ -1079,6 +1305,9 @@ class NextDeploy < Thor
       Dir.chdir(rootFolder)
     end
 
+    # Launch javascripts modules install
+    #
+    #
     def docker_npmsh(reset=false)
       rootFolder = Dir.pwd
 
@@ -1093,6 +1322,9 @@ class NextDeploy < Thor
       Dir.chdir(rootFolder)
     end
 
+    # Execute NextDeploy datas import step
+    #
+    #
     def docker_import
       rootFolder = Dir.pwd
       ismysql = '0'
@@ -1122,6 +1354,9 @@ class NextDeploy < Thor
       Dir.chdir(rootFolder)
     end
 
+    # Execute NextDeploy datas export step
+    #
+    #
     def docker_export
       rootFolder = Dir.pwd
       ismysql = '0'
@@ -1227,10 +1462,10 @@ class NextDeploy < Thor
         when /Symfony/
           docker_postinstall_sf2("ep_#{ep[:path]}_#{@projectname}", framework.downcase)
         when /Drupal/
-          docker_postinstall_drupal("ep_#{ep[:path]}_#{projectname}", ep[:path])
+          docker_postinstall_drupal("ep_#{ep[:path]}_#{@projectname}", ep[:path])
         when /Wordpress/
           port = docker_getport(containername)
-          docker_postinstall_wp("ep_#{ep[:path]}_#{projectname}", port)
+          docker_postinstall_wp("ep_#{ep[:path]}_#{@projectname}", port)
         end
 
         docker_reset_permissions(containername)
@@ -1245,7 +1480,8 @@ class NextDeploy < Thor
       docker_waiting_containers
       puts "Install Drupal Website"
       email = @user[:email]
-      system "docker run --net=#{@projectname}_default  -v=#{Dir.pwd}:/app nextdeploy/drush -y site-install --locale=en --db-url=mysqli://root:8to9or1@mysql_#{@projectname}:3306/#{dbname} --account-pass=admin --site-name=#{@projectname} --account-mail=#{email} --site-mail=#{email} standard"
+      puts "docker run --net=#{@projectname}_default  -v=#{Dir.pwd}:/app nextdeploy/drush -y site-install --locale=en --db-url=mysqli://root:8to9or1@mysql_#{@projectname}:3306/#{dbname} --account-pass=admin --site-name=#{@projectname} --account-mail=#{email} --site-mail=#{email} standard"
+      #system "docker run --net=#{@projectname}_default  -v=#{Dir.pwd}:/app nextdeploy/drush -y site-install --locale=en --db-url=mysqli://root:8to9or1@mysql_#{@projectname}:3306/#{dbname} --account-pass=admin --site-name=#{@projectname} --account-mail=#{email} --site-mail=#{email} standard"
     end
 
     # Postinstall cmds for wordpress
@@ -1313,6 +1549,13 @@ class NextDeploy < Thor
       else
         docker_install
       end
+    end
+
+    # Get host ip
+    #
+    def get_docker_ip
+      enIf = %x{netstat -rn | awk '/^0.0.0.0/ {thif=substr($0,74,10); print thif;} /^default.*UG/ {thif=substr($0,65,10); print thif;}' | head -n 1 | sed "s; ;;g" | tr -d "\n"}
+      %x{/sbin/ifconfig #{enIf} | grep -Eo 'inet (addr:)?([0-9]*\.){3}[0-9]*' | grep -Eo '([0-9]*\.){3}[0-9]*' | grep -v '127.0.0.1' | sed "s; ;;g" | tr -d "\n" | sed "s;inet;;g" | tr -d "\n"}
     end
 
     # Docker install
