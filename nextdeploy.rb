@@ -192,6 +192,9 @@ class NextDeploy < Thor
     # back to dockercompose folder
     Dir.chdir("#{rootFolder}/tmp/docker")
 
+    # get last containers, ... yes, it's ugly !
+    system "grep 'image: ' docker#{@projectname}.yml | sed 's;.* ;;' | while read DIMG; do docker pull $DIMG;done"
+
     # execute docker-compose
     system "docker-compose -p #{@projectname} -f docker#{@projectname}.yml up -d"
 
@@ -1194,13 +1197,16 @@ class NextDeploy < Thor
           when /Symfony/
             cmd.gsub!('bin/console', '')
             cmd.gsub!('app/console', '')
+            system "docker pull nextdeploy/#{framework.downcase}console"
             system "docker run --net=#{@projectname}_default -v=#{Dir.pwd}:/var/www/html nextdeploy/#{framework.downcase}console #{cmd}"
           when /Drupal/
             cmd.gsub!('drush', '')
+            system "docker pull nextdeploy/drush"
             system "docker run --net=#{@projectname}_default  -v=#{Dir.pwd}:/app nextdeploy/drush -y #{cmd} 2>/dev/null"
           when /Wordpress/
             cmd.gsub!('wp.phar', '')
             cmd.gsub!('wp', '')
+            system "docker pull nextdeploy/wp"
             system "docker run --net=#{@projectname}_default  -v=#{Dir.pwd}:/app nextdeploy/wp #{cmd}"
           end
 
@@ -1246,8 +1252,10 @@ class NextDeploy < Thor
         # execute framework specific updb
         case framework
         when /Symfony/
-          system "docker run --net=#{@projectname}_default -v=#{Dir.pwd}:/var/www/html nextdeploy/#{framework}console doctrine:schema:update --force"
+          system "docker pull nextdeploy/#{framework.downcase}console"
+          system "docker run --net=#{@projectname}_default -v=#{Dir.pwd}:/var/www/html nextdeploy/#{framework.downcase}console doctrine:schema:update --force"
         when /Drupal/
+          system "docker pull nextdeploy/drush"
           system "docker run --net=#{@projectname}_default  -v=#{Dir.pwd}:/app nextdeploy/drush -y updb"
         end
       end
@@ -1271,14 +1279,17 @@ class NextDeploy < Thor
         # execute framework specific updb
         case framework
         when /Symfony/
-          system "docker run --net=#{@projectname}_default -v=#{Dir.pwd}:/var/www/html nextdeploy/#{framework}console cache:clear --env=prod 2>/dev/null"
-          system "docker run --net=#{@projectname}_default -v=#{Dir.pwd}:/var/www/html nextdeploy/#{framework}console cache:clear --env=dev 2>/dev/null"
-          system "docker run --net=#{@projectname}_default -v=#{Dir.pwd}:/var/www/html nextdeploy/#{framework}console assets:install --symlink"
-          system "docker run --net=#{@projectname}_default -v=#{Dir.pwd}:/var/www/html nextdeploy/#{framework}console assetic:dump >/dev/null 2>/dev/null"
+          system "docker pull nextdeploy/#{framework.downcase}console"
+          system "docker run --net=#{@projectname}_default -v=#{Dir.pwd}:/var/www/html nextdeploy/#{framework.downcase}console cache:clear --env=prod 2>/dev/null"
+          system "docker run --net=#{@projectname}_default -v=#{Dir.pwd}:/var/www/html nextdeploy/#{framework.downcase}console cache:clear --env=dev 2>/dev/null"
+          system "docker run --net=#{@projectname}_default -v=#{Dir.pwd}:/var/www/html nextdeploy/#{framework.downcase}console assets:install --symlink"
+          system "docker run --net=#{@projectname}_default -v=#{Dir.pwd}:/var/www/html nextdeploy/#{framework.downcase}console assetic:dump >/dev/null 2>/dev/null"
         when /Drupal/
+          system "docker pull nextdeploy/drush"
           system "docker run --net=#{@projectname}_default  -v=#{Dir.pwd}:/app nextdeploy/drush -y cc --all 2>/dev/null"
           system "docker run --net=#{@projectname}_default  -v=#{Dir.pwd}:/app nextdeploy/drush -y cr 2>/dev/null"
         when /Wordpress/
+          system "docker pull nextdeploy/wp"
           system "docker run --net=#{@projectname}_default  -v=#{Dir.pwd}:/app nextdeploy/wp cache flush"
         end
 
@@ -1293,6 +1304,9 @@ class NextDeploy < Thor
     #
     def docker_composersh(reset=false)
       rootFolder = Dir.pwd
+
+      # get last container version
+      system "docker pull nextdeploy/composersh"
 
       @endpoints.each do |ep|
         containername = "ep_#{ep[:path]}_#{@projectname}"
@@ -1310,6 +1324,9 @@ class NextDeploy < Thor
     #
     def docker_npmsh(reset=false)
       rootFolder = Dir.pwd
+
+      # get last container version
+      system "docker pull nextdeploy/npmsh"
 
       @endpoints.each do |ep|
         containername = "ep_#{ep[:path]}_#{@projectname}"
@@ -1329,6 +1346,9 @@ class NextDeploy < Thor
       rootFolder = Dir.pwd
       ismysql = '0'
       ismongo = '0'
+
+      # get last container version
+      system "docker pull nextdeploy/import"
 
       # get technos
       @technos.each do |techno|
@@ -1361,6 +1381,9 @@ class NextDeploy < Thor
       rootFolder = Dir.pwd
       ismysql = '0'
       ismongo = '0'
+
+      # get last container version
+      system "docker pull nextdeploy/export"
 
       # get technos
       @technos.each do |techno|
@@ -1480,8 +1503,9 @@ class NextDeploy < Thor
       docker_waiting_containers
       puts "Install Drupal Website"
       email = @user[:email]
-      puts "docker run --net=#{@projectname}_default  -v=#{Dir.pwd}:/app nextdeploy/drush -y site-install --locale=en --db-url=mysqli://root:8to9or1@mysql_#{@projectname}:3306/#{dbname} --account-pass=admin --site-name=#{@projectname} --account-mail=#{email} --site-mail=#{email} standard"
-      #system "docker run --net=#{@projectname}_default  -v=#{Dir.pwd}:/app nextdeploy/drush -y site-install --locale=en --db-url=mysqli://root:8to9or1@mysql_#{@projectname}:3306/#{dbname} --account-pass=admin --site-name=#{@projectname} --account-mail=#{email} --site-mail=#{email} standard"
+      # get last container version and execute site-install
+      system "docker pull nextdeploy/drush"
+      system "docker run --net=#{@projectname}_default  -v=#{Dir.pwd}:/app nextdeploy/drush -y site-install --locale=en --db-url=mysqli://root:8to9or1@mysql_#{@projectname}:3306/#{dbname} --account-pass=admin --site-name=#{@projectname} --account-mail=#{email} --site-mail=#{email} standard"
     end
 
     # Postinstall cmds for wordpress
@@ -1495,6 +1519,8 @@ class NextDeploy < Thor
 
       docker_waiting_containers
       email = @user[:email]
+      # get last container version and install wordpress website
+      system "docker pull nextdeploy/wp"
       system "docker run --net=#{@projectname}_default  -v=#{Dir.pwd}:/app nextdeploy/wp core install --url=http://127.0.0.1:#{port}/ --title=#{@projectname} --admin_user=admin --admin_password=admin --admin_email=#{email}"
     end
 
@@ -1504,6 +1530,9 @@ class NextDeploy < Thor
       # wiating mariadb container is up
       docker_waiting_containers
       docroot = Dir.pwd
+
+      # get last container version
+      system "docker pull nextdeploy/#{framework}console"
 
       # Ensure that the first composer has finish before launch symfony commands
       until File.exist?("app/bootstrap.php.cache") do
@@ -1522,6 +1551,7 @@ class NextDeploy < Thor
     # Execute postinstall script
     #
     def docker_postinstall_script
+      system "docker pull nextdeploy/postinstall"
       system "docker run --net=#{@projectname}_default -v=#{Dir.pwd}:/app nextdeploy/postinstall"
     end
 
