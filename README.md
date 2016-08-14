@@ -55,6 +55,7 @@ Options:
   [--rebuild=REBUILD]
   [--reinstall=REINSTALL]
   [--restart=RESTART]
+  [--destroy=DESTROY]
   [--update=UPDATE]
   [--cc=CC]
   [--composersh=COMPOSERSH]
@@ -64,31 +65,35 @@ Options:
   [--export=EXPORT]
 
 Description:
-  `ndeploy docker` will launch containers for execute current project (in current folder)
+  'ndeploy docker' ensures that containers are running for execute current project
 
-  `ndeploy docker --ssh` will ssh into container
+  Following options are available
 
-  `ndeploy docker --stop` will stop containers for current project
+  --ssh will ssh into container
 
-  `ndeploy docker --rebuild` will rebuild (composer, npm, clear caches, ...) current project
+  --stop will stop containers for current project
 
-  `ndeploy docker --reinstall` will completely reinstall containers for current project
+  --destroy will destroy containers for current project
 
-  `ndeploy docker --restart` will restart containers for current project
+  --rebuild will rebuild (composer, npm, clear caches, ...) current project
 
-  `ndeploy docker --update` will execute gitpull and some update commands for current project
+  --reinstall will completely reinstall containers for current project
 
-  `ndeploy docker --cc` will flush caches for current project
+  --restart will restart containers for current project
 
-  `ndeploy docker --composersh` will execute "composer install" for current project
+  --update will execute gitpull and some update commands for current project
 
-  `ndeploy docker --npmsh` will execute javascripts install commands (npm, gulp, grunt) for current project
+  --cc will flush caches for current project
 
-  `ndeploy docker --console` will execute framework commands (console, drush, wp, ...) for current project
+  --composersh will execute "composer install" for current project
 
-  `ndeploy docker --import` will import datas from NextDeploy ftp repository
+  --npmsh will execute javascripts install commands (npm, gulp, grunt) for current project
 
-  `ndeploy docker --export` will export containers datas to NextDeploy ftp repository
+  --console will execute framework commands (console, drush, wp, ...) for current project
+
+  --import will import datas from NextDeploy ftp repository
+
+  --export will export containers datas to NextDeploy ftp repository
 ```
 
 ## Contributing

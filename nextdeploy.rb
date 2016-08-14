@@ -20,25 +20,28 @@ class NextDeploy < Thor
   #
   desc "docker", "[BETA] launch containers for execute current project"
   long_desc <<-LONGDESC
-    `ndeploy docker` will launch containers for execute current project\n
-    `ndeploy docker --ssh` will ssh into container\n
-    `ndeploy docker --stop` will stop containers for current project\n
-    `ndeploy docker --rebuild` will rebuild (composer, npm, clear caches, ...) current project\n
-    `ndeploy docker --reinstall` will completely reinstall containers for current project\n
-    `ndeploy docker --restart` will restart containers for current project\n
-    `ndeploy docker --update` will execute gitpull and some update commands for current project\n
-    `ndeploy docker --cc` will flush caches for current project\n
-    `ndeploy docker --composersh` will execute "composer install" for current project\n
-    `ndeploy docker --npmsh` will execute javascripts install commands (npm, gulp, grunt) for current project\n
-    `ndeploy docker --console` will execute framework commands (console, drush, wp, ...) for current project\n
-    `ndeploy docker --import` will import datas from NextDeploy ftp repository\n
-    `ndeploy docker --export` will export containers datas to NextDeploy ftp repository\n
+  'ndeploy docker' ensures that containers are running for execute current project\n
+  Following options are available\n
+                  --ssh will ssh into container\n
+                  --stop will stop containers for current project\n
+                  --destroy will destroy containers for current project\n
+                  --rebuild will rebuild (composer, npm, clear caches, ...) current project\n
+                  --reinstall will completely reinstall containers for current project\n
+                  --restart will restart containers for current project\n
+                  --update will execute gitpull and some update commands for current project\n
+                  --cc will flush caches for current project\n
+                  --composersh will execute "composer install" for current project\n
+                  --npmsh will execute javascripts install commands (npm, gulp, grunt) for current project\n
+                  --console will execute framework commands (console, drush, wp, ...) for current project\n
+                  --import will import datas from NextDeploy ftp repository\n
+                  --export will export containers datas to NextDeploy ftp repository\n
   LONGDESC
   option :ssh
   option :stop
   option :rebuild
   option :reinstall
   option :restart
+  option :destroy
   option :update
   option :cc
   option :composersh
@@ -65,158 +68,29 @@ class NextDeploy < Thor
     # check if docker is already install
     docker_check
 
-    rootFolder = Dir.pwd
-    reset = options[:rebuild] || options[:reinstall] ? true : false
+    # init destroy flags
+    isdestroy = options[:reinstall] || options[:destroy] ? true : false
 
-    docker_ssh if options[:ssh]
+    # if reinstall or restart, ensure containers are stopped before up
+    docker_compose_stop(isdestroy) if options[:restart] || options[:reinstall]
+    # generate container if needed
+    docker_compose_gen
+    # ensure container are running
+    docker_compose_up
+
+    # execute action follow options parameters
     docker_import if options[:import]
     docker_export if options[:export]
+    docker_composersh(false) if options[:composersh]
+    docker_npmsh(false) if options[:npmsh]
     docker_update if options[:update]
-    docker_composersh(reset) if options[:composersh]
-    docker_npmsh(reset) if options[:npmsh]
     docker_rebuild if options[:rebuild]
     docker_console if options[:console]
     docker_cc if options[:cc]
-    exit unless options.empty? || options[:stop] || options[:restart] || options[:reinstall]
-
-    isimport = true
-    composerLines = []
-    containerPorts = {}
-
-    if options[:stop] || options[:reinstall] || options[:restart]
-      # clean old containers
-      if File.exists?("#{rootFolder}/tmp/docker/docker#{@projectname}.yml")
-        # go to dockercompose folder
-        Dir.chdir("#{rootFolder}/tmp/docker")
-        # kill containers
-        system "docker-compose -p #{@projectname} -f docker#{@projectname}.yml stop"
-        system "docker-compose -p #{@projectname} -f docker#{@projectname}.yml rm -f -v --all"
-        system "rm -f docker#{@projectname}.yml"
-        Dir.chdir(rootFolder)
-      end
-
-      exit if options[:stop]
-      system 'rm -rf tmp' if options[:reinstall]
-    end
-
-    if File.exists?("#{rootFolder}/tmp/docker/docker#{@projectname}.yml")
-      warn("It seems containers already running for this project")
-      warn("Maybe you want kill them with 'ndeploy docker --stop'")
-      exit
-    end
-
-    local_ip = get_docker_ip
-    port = 9181
-    while is_port_open?("127.0.0.1", port) do
-      port = port + 1
-    end
-
-    @endpoints.each do |ep|
-      containername = "ep_#{ep[:path]}_#{@projectname}"
-      envvars = ep[:envvars].split(' ').map { |ev| "    #{ev.sub('=',': ')}" }.join("\n")
-      dockercompose = ep[:dockercompose]
-      next if dockercompose.empty?
-      containerPorts["#{containername}"] = port
-      # replace container name, docroot, envvars and ports
-      dockercompose.gsub!('%%CONTAINERNAME%%', "#{containername}")
-      dockercompose.gsub!('%%DOCROOT%%', "#{Dir.pwd}/#{ep[:path]}")
-      dockercompose.gsub!('%%PORT%%', "#{port}")
-      dockercompose.gsub!('%%PORTEP%%', "#{ep[:port]}")
-      envvars = "  environment:\n#{envvars}" unless envvars.empty? || /environment:/.match(dockercompose)
-      dockercompose.gsub!('%%ENVVARS%%', envvars)
-      dockercompose.gsub!(/^$\n/, '')
-      dockercompose.gsub!('%%PROJECTNAME%%', @projectname)
-      dockercompose.gsub!('%%EPPATH%%', ep[:path])
-      # push into composerLines and containerList arrays
-      composerLines << dockercompose
-
-      port = port + 1
-      while is_port_open?("127.0.0.1", port) do
-        port = port + 1
-      end
-    end
-
-    # replace endpoints host into composer template
-    @endpoints.each do |ep|
-      containername = "ep_#{ep[:path]}_#{@projectname}"
-      port = containerPorts["#{containername}"]
-      eppath = ep[:path].upcase
-      composerLines.map! { |cl| cl.gsub("%{URI_#{eppath}}", "#{local_ip}").gsub("%{PORT_#{eppath}}", "#{port}") }
-    end
-
-    # Ensure tmp is in gitignore
-    system 'grep -e ^/tmp$ .gitignore >/dev/null 2>&1 || echo -e "\n/tmp" >> .gitignore'
-    # Prepare folder for docker work
-    Dir.mkdir("#{rootFolder}/tmp") unless Dir.exists?("#{rootFolder}/tmp")
-
-    # get technos and frameworks
-    @technos.each do |techno|
-      dockercompose = techno[:dockercompose]
-      next if dockercompose.nil? || dockercompose.empty?
-      technoname = techno[:name].sub(/-.*$/,'').downcase
-      # dont import if datas already exists
-      if Dir.exists?("#{rootFolder}/tmp/#{technoname}")
-        isimport = false
-      else
-        Dir.mkdir("#{rootFolder}/tmp/#{technoname}")
-      end
-      containername = "#{technoname}_#{@projectname}"
-      dockercompose.gsub!('%%CONTAINERNAME%%', "#{containername}")
-      dockercompose.gsub!('%%TECHNOFOLDER%%', "#{rootFolder}/tmp/#{technoname}")
-      dockercompose.gsub!('%%PROJECTNAME%%', @projectname)
-      composerLines << dockercompose
-    end
-
-    begin
-      Dir.mkdir("#{rootFolder}/tmp/docker") unless Dir.exists?("#{rootFolder}/tmp/docker")
-      open("#{rootFolder}/tmp/docker/docker#{@projectname}.yml", File::RDWR|File::CREAT) do |f|
-        f.flock(File::LOCK_EX)
-        f.rewind
-        f.puts "version: '2'"
-        f.puts "services:"
-        f.puts composerLines.join("\n").gsub(/^/, '  ')
-        f.flush
-        f.truncate(f.pos)
-      end
-    rescue => me
-      warn("Create docker-composer file for #{@projectname} failed, #{me.message}")
-      exit
-    end
-
-    # Ensure we are back to root
-    Dir.chdir("#{rootFolder}")
-
-    docker_preinstall
-    docker_npmsh(reset)
-
-    # back to dockercompose folder
-    Dir.chdir("#{rootFolder}/tmp/docker")
-
-    # get last containers, ... yes, it's ugly !
-    system "grep 'image: ' docker#{@projectname}.yml | sed 's;.* ;;' | while read DIMG; do docker pull $DIMG;done"
-
-    # execute docker-compose
-    system "docker-compose -p #{@projectname} -f docker#{@projectname}.yml up -d"
-
-    # Back to root
-    Dir.chdir("#{rootFolder}")
-
-    docker_composersh(reset)
-    docker_postinstall
-    docker_import if isimport
-
-    # give endpoints output on terminal
-    @endpoints.each do |ep|
-      containername = "ep_#{ep[:path]}_#{@projectname}"
-      port = docker_getport(containername)
-      puts "Your #{ep[:path]} endpoint is reached on http://127.0.0.1:#{port}/"
-    end
-
-    # execute postinstall nextdeploy task
-    if isimport
-      Dir.chdir(rootFolder)
-      docker_postinstall_script
-    end
+    docker_compose_stop(isdestroy) if options[:stop]
+    docker_compose_stop(isdestroy) if options[:destroy]
+    docker_list_endpoints unless options[:destroy] || options[:stop]
+    docker_ssh if options[:ssh]
   end
 
   # Print current version
@@ -603,7 +477,7 @@ class NextDeploy < Thor
   def sshkey
     init
 
-    unless File.exist?("#{Dir.home}/.ssh/id_rsa.pub")
+    unless File.exists?("#{Dir.home}/.ssh/id_rsa.pub")
       error("No id_rsa.pub for current user")
     end
 
@@ -698,7 +572,7 @@ class NextDeploy < Thor
 
     # upload files
     ftp_file = File.new(file)
-    error("File #{file} not found") unless File.exist?(file)
+    error("File #{file} not found") unless File.exists?(file)
     Net::FTP.open(@ftpendpoint, login_ftp, password_ftp) do |ftp|
       ftp.putbinaryfile(ftp_file, "#{typefile}/#{ftp_filename}")
     end
@@ -1127,6 +1001,167 @@ class NextDeploy < Thor
       @systems = json(response.body)[:systemimages]
     end
 
+    # Stop (and destory if paremeter is true) docker-compose containers
+    #
+    def docker_compose_stop(isdestroy)
+      rootFolder = Dir.pwd
+      # clean old containers
+      if File.exists?("#{rootFolder}/tmp/docker/docker#{@projectname}.yml")
+        # go to dockercompose folder
+        Dir.chdir("#{rootFolder}/tmp/docker")
+        # kill containers
+        system "docker-compose -p #{@projectname} -f docker#{@projectname}.yml stop"
+        # flush completely containers only for reinstall option
+        system "docker-compose -p #{@projectname} -f docker#{@projectname}.yml rm -f -v --all" if isdestroy
+        system "rm -f docker#{@projectname}.yml" if isdestroy
+        Dir.chdir(rootFolder)
+      end
+
+      system 'rm -rf tmp' if isdestroy
+    end
+
+    # Start docker-compose containers
+    #
+    def docker_compose_up
+      rootFolder = Dir.pwd
+      # if docker compose file already exists, just start containers
+      if File.exists?("#{rootFolder}/tmp/docker/docker#{@projectname}.yml")
+        # go to dockercompose folder
+        Dir.chdir("#{rootFolder}/tmp/docker")
+        # Start containers
+        system "docker-compose -p #{@projectname} -f docker#{@projectname}.yml up -d"
+        Dir.chdir(rootFolder)
+      end
+    end
+
+    # Install docker-compose containers
+    #
+    def docker_compose_gen
+      rootFolder = Dir.pwd
+      isimport = true
+      composerLines = []
+      containerPorts = {}
+
+      # if docker compose file already exists, return
+      if File.exists?("#{rootFolder}/tmp/docker/docker#{@projectname}.yml")
+        warn("tmp/docker/docker#{@projectname}.yml already exists, no need to generate")
+        return
+      end
+
+      local_ip = get_docker_ip
+      port = 9181
+      while is_port_open?("127.0.0.1", port) do
+        port = port + 1
+      end
+
+      @endpoints.each do |ep|
+        containername = "ep_#{ep[:path]}_#{@projectname}"
+        envvars = ep[:envvars].split(' ').map { |ev| "    #{ev.sub('=',': ')}" }.join("\n")
+        dockercompose = ep[:dockercompose]
+        next if dockercompose.empty?
+        containerPorts["#{containername}"] = port
+        # replace container name, docroot, envvars and ports
+        dockercompose.gsub!('%%CONTAINERNAME%%', "#{containername}")
+        dockercompose.gsub!('%%DOCROOT%%', "#{Dir.pwd}/#{ep[:path]}")
+        dockercompose.gsub!('%%PORT%%', "#{port}")
+        dockercompose.gsub!('%%PORTEP%%', "#{ep[:port]}")
+        envvars = "  environment:\n#{envvars}" unless envvars.empty? || /environment:/.match(dockercompose)
+        dockercompose.gsub!('%%ENVVARS%%', envvars)
+        dockercompose.gsub!(/^$\n/, '')
+        dockercompose.gsub!('%%PROJECTNAME%%', @projectname)
+        dockercompose.gsub!('%%EPPATH%%', ep[:path])
+        # push into composerLines and containerList arrays
+        composerLines << dockercompose
+
+        port = port + 1
+        while is_port_open?("127.0.0.1", port) do
+          port = port + 1
+        end
+      end
+
+      # replace endpoints host into composer template
+      @endpoints.each do |ep|
+        containername = "ep_#{ep[:path]}_#{@projectname}"
+        port = containerPorts["#{containername}"]
+        eppath = ep[:path].upcase
+        composerLines.map! { |cl| cl.gsub("%{URI_#{eppath}}", "#{local_ip}").gsub("%{PORT_#{eppath}}", "#{port}") }
+      end
+
+      # Ensure tmp is in gitignore
+      system 'grep -e ^/tmp$ .gitignore >/dev/null 2>&1 || echo -e "\n/tmp" >> .gitignore'
+      # Prepare folder for docker work
+      Dir.mkdir("#{rootFolder}/tmp") unless Dir.exists?("#{rootFolder}/tmp")
+
+      # get technos and frameworks
+      @technos.each do |techno|
+        dockercompose = techno[:dockercompose]
+        next if dockercompose.nil? || dockercompose.empty?
+        technoname = techno[:name].sub(/-.*$/,'').downcase
+        # dont import if datas already exists
+        if Dir.exists?("#{rootFolder}/tmp/#{technoname}")
+          isimport = false
+        else
+          Dir.mkdir("#{rootFolder}/tmp/#{technoname}")
+        end
+        containername = "#{technoname}_#{@projectname}"
+        dockercompose.gsub!('%%CONTAINERNAME%%', "#{containername}")
+        dockercompose.gsub!('%%TECHNOFOLDER%%', "#{rootFolder}/tmp/#{technoname}")
+        dockercompose.gsub!('%%PROJECTNAME%%', @projectname)
+        composerLines << dockercompose
+      end
+
+      begin
+        Dir.mkdir("#{rootFolder}/tmp/docker") unless Dir.exists?("#{rootFolder}/tmp/docker")
+        open("#{rootFolder}/tmp/docker/docker#{@projectname}.yml", File::RDWR|File::CREAT) do |f|
+          f.flock(File::LOCK_EX)
+          f.rewind
+          f.puts "version: '2'"
+          f.puts "services:"
+          f.puts composerLines.join("\n").gsub(/^/, '  ')
+          f.flush
+          f.truncate(f.pos)
+        end
+      rescue => me
+        warn("Create docker-composer file for #{@projectname} failed, #{me.message}")
+        exit
+      end
+
+      # Ensure we are back to root
+      Dir.chdir("#{rootFolder}")
+
+      # preinstall stuffs
+      docker_preinstall
+      docker_npmsh(true)
+
+      # get last containers, ... yes, it's ugly !
+      Dir.chdir("#{rootFolder}/tmp/docker")
+      system "grep 'image: ' docker#{@projectname}.yml | sed 's;.* ;;' | while read DIMG; do docker pull $DIMG;done"
+
+      # Back to root
+      Dir.chdir("#{rootFolder}")
+      docker_compose_up
+
+      # postinstall stuffs
+      docker_composersh(true)
+      docker_postinstall
+      docker_import if isimport
+
+      # execute postinstall nextdeploy task
+      if isimport
+        Dir.chdir(rootFolder)
+        docker_postinstall_script
+      end
+    end
+
+    def docker_list_endpoints
+      # give endpoints output on terminal
+      @endpoints.each do |ep|
+        containername = "ep_#{ep[:path]}_#{@projectname}"
+        port = docker_getport(containername)
+        puts "Your #{ep[:path]} endpoint is reached on http://127.0.0.1:#{port}/"
+      end
+    end
+
     # Ssh to conainer
     #
     #
@@ -1226,6 +1261,8 @@ class NextDeploy < Thor
       docker_composersh
       docker_npmsh
       docker_updb
+      docker_compose_stop(false)
+      docker_compose_up
     end
 
     # Rebuild modules, launche updb and clear caches
@@ -1235,6 +1272,8 @@ class NextDeploy < Thor
       docker_composersh(true)
       docker_npmsh(true)
       docker_updb
+      docker_compose_stop(false)
+      docker_compose_up
     end
 
     # Launch updb (update data models) for the project
@@ -1396,6 +1435,7 @@ class NextDeploy < Thor
         framework = ep[:frameworkname]
 
         containername = "ep_#{ep[:path]}_#{@projectname}"
+        port = docker_getport(containername)
         Dir.chdir("#{rootFolder}/#{ep[:path]}")
 
         login_ftp = @project[:gitpath].gsub(/^.*\//, '')
@@ -1535,7 +1575,7 @@ class NextDeploy < Thor
       system "docker pull nextdeploy/#{framework}console"
 
       # Ensure that the first composer has finish before launch symfony commands
-      until File.exist?("app/bootstrap.php.cache") do
+      until File.exists?("app/bootstrap.php.cache") do
         puts "Waiting composer finished his work ....."
         sleep 5
       end
@@ -1558,7 +1598,7 @@ class NextDeploy < Thor
     # Reset permission on docroot for container identified by containername
     #
     def docker_reset_permissions(containername)
-      system "docker exec #{containername} /bin/bash -c '[[ -d /var/www/html ]] && chown -R 1000:1000 /var/www/html;[[ -d /app ]] && chown -R 1000:1000 /app'"
+      system "docker exec #{containername} /bin/bash -c '[[ -d /var/www/html ]] && chown -R 1000:1000 /var/www/html;[[ -d /app ]] && chown -R 1000:1000 /app' 2>/dev/null"
     end
 
     # Get Exposed Port from container name
