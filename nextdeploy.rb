@@ -1141,7 +1141,9 @@ class NextDeploy < Thor
       Dir.chdir("#{rootFolder}")
       docker_compose_up
 
+      docker_waiting_containers
       # postinstall stuffs
+      docker_create_databases
       docker_composersh(true)
       docker_postinstall
       docker_import if isimport
@@ -1150,6 +1152,14 @@ class NextDeploy < Thor
       if isimport
         Dir.chdir(rootFolder)
         docker_postinstall_script
+      end
+    end
+
+    def docker_create_databases
+      containername = "mysql_#{@projectname}"
+      @endpoints.each do |ep|
+        # ensure database is well created at this step, .... ugly !!!
+        system "docker exec -t mysql_#{@projectname} /usr/bin/mysql -u root -p8to9or1 -e 'create database #{ep[:path]} character set=utf8 collate=utf8_unicode_ci' >/dev/null 2>&1"
       end
     end
 
@@ -1163,7 +1173,6 @@ class NextDeploy < Thor
     end
 
     # Ssh to conainer
-    #
     #
     def docker_ssh
       index = 0
@@ -1195,7 +1204,6 @@ class NextDeploy < Thor
     end
 
     # Ssh to conainer
-    #
     #
     def docker_console
       index = 0
@@ -1255,7 +1263,6 @@ class NextDeploy < Thor
 
     # Update project containers
     #
-    #
     def docker_pull
       system 'git pull --rebase'
       docker_composersh
@@ -1267,7 +1274,6 @@ class NextDeploy < Thor
 
     # Rebuild modules, launche updb and clear caches
     #
-    #
     def docker_rebuild
       docker_composersh(true)
       docker_npmsh(true)
@@ -1277,7 +1283,6 @@ class NextDeploy < Thor
     end
 
     # Launch updb (update data models) for the project
-    #
     #
     def docker_updb
       rootFolder = Dir.pwd
@@ -1304,7 +1309,6 @@ class NextDeploy < Thor
     end
 
     # Clear application caches
-    #
     #
     def docker_cc
       rootFolder = Dir.pwd
@@ -1340,7 +1344,6 @@ class NextDeploy < Thor
 
     # Launch composer install recursive script
     #
-    #
     def docker_composersh(reset=false)
       rootFolder = Dir.pwd
 
@@ -1350,7 +1353,7 @@ class NextDeploy < Thor
       @endpoints.each do |ep|
         containername = "ep_#{ep[:path]}_#{@projectname}"
         Dir.chdir("#{rootFolder}/#{ep[:path]}")
-        system "docker run -v=#{Dir.pwd}:/app -w /app nextdeploy/composersh --reset #{reset}"
+        system "docker run --net=#{@projectname}_default -v=#{Dir.pwd}:/app -w /app nextdeploy/composersh --reset #{reset}"
 
         docker_reset_permissions(containername)
       end
@@ -1359,7 +1362,6 @@ class NextDeploy < Thor
     end
 
     # Launch javascripts modules install
-    #
     #
     def docker_npmsh(reset=false)
       rootFolder = Dir.pwd
@@ -1370,16 +1372,18 @@ class NextDeploy < Thor
       @endpoints.each do |ep|
         containername = "ep_#{ep[:path]}_#{@projectname}"
         Dir.chdir("#{rootFolder}/#{ep[:path]}")
-        system "docker run -v #{Dir.pwd}:/app -w /app nextdeploy/npmsh --reset #{reset}"
+        system "docker run -v #{Dir.pwd}:/app -w /app -m 4096m nextdeploy/npmsh --reset #{reset}"
 
         docker_reset_permissions(containername)
       end
 
       Dir.chdir(rootFolder)
+
+      # npmsh used lot of resources, sleep 5s to let the system breaths
+      sleep 5
     end
 
     # Execute NextDeploy datas import step
-    #
     #
     def docker_import
       rootFolder = Dir.pwd
@@ -1459,8 +1463,7 @@ class NextDeploy < Thor
 
         case framework
         when /Symfony/
-          port = docker_getport(containername)
-          docker_preinstall_sf2(port, ep[:path])
+          docker_preinstall_sf2(ep[:path])
         when /Wordpress/
           docker_preinstall_wp
         end
@@ -1478,11 +1481,9 @@ class NextDeploy < Thor
 
     # Preinstall cmds for symfony2
     #
-    def docker_preinstall_sf2(port, dbname)
+    def docker_preinstall_sf2(dbname)
       Dir.chdir('app/config')
       system 'cp parameters.yml.dist parameters.yml'
-      system "perl -pi -e 's/base_hostname:.*$/base_hostname: \'127.0.0.1:#{port}\'/' parameters.yml"
-      system "perl -pi -e 's/base_domain:.*$/base_domain: \'127.0.0.1:#{port}\'/' parameters.yml"
 
       @technos.each do |techno|
         technoname = techno[:name].sub(/-.*$/,'').downcase
@@ -1497,7 +1498,7 @@ class NextDeploy < Thor
 
         system "perl -pi -e 's/es_host:.*$/es_host: #{containername}/' parameters.yml" if /elasticsearch/.match(containername)
         system "perl -pi -e 's/amqp_host:.*$/amqp_host: #{containername}/' parameters.yml" if /rabbitmq/.match(containername)
-        system "perl -pi -e 's;kibana_url:.*$;kibana_host: \'http://#{containername}/app/kibana\';' parameters.yml" if /kibana/.match(containername)
+        system "perl -pi -e 's;kibana_url:.*$;kibana_url: \'http://#{containername}/app/kibana\';' parameters.yml" if /kibana/.match(containername)
       end
 
       @endpoints.each do |ep|
@@ -1523,7 +1524,8 @@ class NextDeploy < Thor
         # execute framework specific script
         case framework
         when /Symfony/
-          docker_postinstall_sf2("ep_#{ep[:path]}_#{@projectname}", framework.downcase)
+          port = docker_getport(containername)
+          docker_postinstall_sf2("ep_#{ep[:path]}_#{@projectname}", framework.downcase, port)
         when /Drupal/
           docker_postinstall_drupal("ep_#{ep[:path]}_#{@projectname}", ep[:path])
         when /Wordpress/
@@ -1540,7 +1542,6 @@ class NextDeploy < Thor
     # Postinstall cmds for drupal project
     #
     def docker_postinstall_drupal(containername, dbname)
-      docker_waiting_containers
       puts "Install Drupal Website"
       email = @user[:email]
       # get last container version and execute site-install
@@ -1557,7 +1558,6 @@ class NextDeploy < Thor
         system "mv git-wp-content wp-content"
       end
 
-      docker_waiting_containers
       email = @user[:email]
       # get last container version and install wordpress website
       system "docker pull nextdeploy/wp"
@@ -1566,10 +1566,13 @@ class NextDeploy < Thor
 
     # Postinstall cmds for symfony2 project
     #
-    def docker_postinstall_sf2(containername, framework)
-      # wiating mariadb container is up
-      docker_waiting_containers
+    def docker_postinstall_sf2(containername, framework, port)
+      # change base domain
+      system "perl -pi -e 's/base_hostname:.*$/base_hostname: \'127.0.0.1:#{port}\'/' app/config/parameters.yml"
+      system "perl -pi -e 's/base_domain:.*$/base_domain: \'127.0.0.1:#{port}\'/' app/config/parameters.yml"
+
       docroot = Dir.pwd
+      eppath = containername.sub(/^ep_/, '').sub(/_#{@projectname}$/, '')
 
       # get last container version
       system "docker pull nextdeploy/#{framework}console"
@@ -1582,8 +1585,8 @@ class NextDeploy < Thor
 
       puts "Install symfony website"
       # install and configure doctrine database
-      system "docker run --net=#{@projectname}_default -v=#{docroot}:/var/www/html nextdeploy/#{framework}console doctrine:database:drop --force >/dev/null 2>/dev/null"
-      system "docker run --net=#{@projectname}_default -v=#{docroot}:/var/www/html nextdeploy/#{framework}console doctrine:database:create"
+      #system "docker run --net=#{@projectname}_default -v=#{docroot}:/var/www/html nextdeploy/#{framework}console doctrine:database:drop --force >/dev/null 2>/dev/null"
+      #system "docker run --net=#{@projectname}_default -v=#{docroot}:/var/www/html nextdeploy/#{framework}console doctrine:database:create"
       system "docker run --net=#{@projectname}_default -v=#{docroot}:/var/www/html nextdeploy/#{framework}console doctrine:schema:update --force"
       system "docker run --net=#{@projectname}_default -v=#{docroot}:/var/www/html nextdeploy/#{framework}console assets:install --symlink"
     end
@@ -1648,8 +1651,8 @@ class NextDeploy < Thor
     # Waiting mariadb is up
     #
     def docker_waiting_containers
-      puts "Waiting containers are up ..."
-      sleep 20
+      puts "Waiting 40s for ensure that containers are up ..."
+      sleep 40
     end
 
     # Helper function for parse json call
