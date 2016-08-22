@@ -35,6 +35,8 @@ class NextDeploy < Thor
                   --console will execute framework commands (console, drush, wp, ...) for current project\n
                   --import will import datas from NextDeploy ftp repository\n
                   --export will export containers datas to NextDeploy ftp repository\n
+                  --sql will connect to mysql database\n
+                  --mongo will connect to mongo database\n
   LONGDESC
   option :ssh
   option :stop
@@ -49,6 +51,8 @@ class NextDeploy < Thor
   option :console
   option :import
   option :export
+  option :sql
+  option :mongo
   def docker
     # check folder => root of project
     init
@@ -91,6 +95,8 @@ class NextDeploy < Thor
     docker_compose_stop(isdestroy) if options[:destroy]
     docker_list_endpoints unless options[:destroy] || options[:stop]
     docker_ssh if options[:ssh]
+    docker_sql if options[:sql]
+    docker_mongo if options[:mongo]
   end
 
   # Print current version
@@ -1372,7 +1378,7 @@ class NextDeploy < Thor
       @endpoints.each do |ep|
         containername = "ep_#{ep[:path]}_#{@projectname}"
         Dir.chdir("#{rootFolder}/#{ep[:path]}")
-        system "docker run -v #{Dir.pwd}:/app -w /app -m 4096m nextdeploy/npmsh --reset #{reset}"
+        system "docker run -v #{Dir.pwd}:/app -w /app nextdeploy/npmsh --reset #{reset}"
 
         docker_reset_permissions(containername)
       end
@@ -1448,6 +1454,20 @@ class NextDeploy < Thor
       end
 
       Dir.chdir(rootFolder)
+    end
+
+    # Execute NextDeploy sql client
+    #
+    def docker_sql
+      containername = "mysql_#{@projectname}"
+      exec "docker exec -t -i #{containername} /usr/bin/mysql -u root -p8to9or1"
+    end
+
+    # Execute NextDeploy mongo client
+    #
+    def docker_mongo
+      containername = "mongo_#{@projectname}"
+      exec "docker exec -t -i #{containername} /usr/bin/mongo"
     end
 
     # Execute preinstall task

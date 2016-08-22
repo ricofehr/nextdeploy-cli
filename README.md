@@ -94,6 +94,10 @@ Description:
   --import will import datas from NextDeploy ftp repository
 
   --export will export containers datas to NextDeploy ftp repository
+
+  --sql will connect to mysql database
+
+  --mongo will connect to mongo database
 ```
 
 ## Contributing
