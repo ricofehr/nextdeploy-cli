@@ -1269,7 +1269,7 @@ class NextDeploy < Thor
 
     # Update project containers
     #
-    def docker_pull
+    def docker_update
       system 'git pull --rebase'
       docker_composersh
       docker_npmsh
@@ -1660,8 +1660,10 @@ class NextDeploy < Thor
       if File.exists?('/usr/bin/sw_vers')
         system 'curl -OsSL "https://download.docker.com/mac/beta/Docker.dmg"'
         system 'hdiutil mount Docker.dmg'
-        system 'sudo mv /Volumes/Docker/Docker.app /Applications/'
+        system 'sudo cp -rf /Volumes/Docker/Docker.app /Applications/'
         system 'rm -f Docker.dmg'
+        puts "Docker is installed,  please launch Docker app and execute again 'ndeploy docker'"
+        exit 0
       else
         system 'wget -qO- https://get.docker.com/ | sudo sh'
       end
