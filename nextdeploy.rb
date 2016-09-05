@@ -37,6 +37,7 @@ class NextDeploy < Thor
                   --export will export containers datas to NextDeploy ftp repository\n
                   --sql will connect to mysql database\n
                   --mongo will connect to mongo database\n
+                  --pma will launch phpmyadmin container for mysql database interaction\n
   LONGDESC
   option :ssh
   option :stop
@@ -53,6 +54,7 @@ class NextDeploy < Thor
   option :export
   option :sql
   option :mongo
+  option :pma
   def docker
     # check folder => root of project
     init
@@ -94,6 +96,7 @@ class NextDeploy < Thor
     docker_compose_stop(isdestroy) if options[:stop]
     docker_compose_stop(isdestroy) if options[:destroy]
     docker_list_endpoints unless options[:destroy] || options[:stop]
+    docker_pma if options[:pma]
     docker_ssh if options[:ssh]
     docker_sql if options[:sql]
     docker_mongo if options[:mongo]
@@ -1009,6 +1012,7 @@ class NextDeploy < Thor
 
     # Stop (and destory if paremeter is true) docker-compose containers
     #
+    # @params [Boolean] isdestroy
     def docker_compose_stop(isdestroy)
       rootFolder = Dir.pwd
       # clean old containers
@@ -1616,6 +1620,21 @@ class NextDeploy < Thor
     def docker_postinstall_script
       system "docker pull nextdeploy/postinstall"
       system "docker run --net=#{@projectname}_default -v=#{Dir.pwd}:/app nextdeploy/postinstall"
+    end
+
+    # Run a phpmyadmin container
+    #
+    def docker_pma
+      port = 9381
+      while is_port_open?("127.0.0.1", port) do
+        port = port + 1
+      end
+
+      system "docker pull nextdeploy/phpmyadmin"
+
+      puts "\n\nPhpmyadmin, http://127.0.0.1:#{port}/"
+      puts "Ctrl-c for stop phpmyadmin and get back to terminal prompt"
+      exec "docker run --net=#{@projectname}_default -e \"DB_HOST=mysql_#{@projectname}\" -p #{port}:80 nextdeploy/phpmyadmin 1>/dev/null 2>&1"
     end
 
     # Reset permission on docroot for container identified by containername
