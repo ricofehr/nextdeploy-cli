@@ -708,6 +708,7 @@ class NextDeploy < Thor
     def init_constants
       @@version = "1.6"
       @@remote_cli = "http://cli.nextdeploy.io"
+      @@docker_ip = get_docker_ip
     end
 
     # Retrieve settings parameters
@@ -1062,9 +1063,9 @@ class NextDeploy < Thor
         return
       end
 
-      local_ip = get_docker_ip
+      local_ip = @@docker_ip
       port = 9181
-      while is_port_open?("127.0.0.1", port) do
+      until port_open?(local_ip, port) do
         port = port + 1
       end
 
@@ -1088,7 +1089,7 @@ class NextDeploy < Thor
         composerLines << dockercompose
 
         port = port + 1
-        while is_port_open?("127.0.0.1", port) do
+        until port_open?(@@docker_ip, port) do
           port = port + 1
         end
       end
@@ -1114,8 +1115,13 @@ class NextDeploy < Thor
         # dont import if datas already exists
         if Dir.exists?("#{rootFolder}/tmp/#{technoname}")
           isimport = false
-        else
+        elsif docker_native?
           Dir.mkdir("#{rootFolder}/tmp/#{technoname}")
+          File.chmod(0777, "#{rootFolder}/tmp/#{technoname}")
+        else
+          # if no native docker, disable persistent storage
+          dockercompose.gsub!(/^.*volumes:.*$\n/,'')
+          dockercompose.gsub!(/^.*%%TECHNOFOLDER%%.*$\n/,'')
         end
         containername = "#{technoname}_#{@projectname}"
         dockercompose.gsub!('%%CONTAINERNAME%%', "#{containername}")
@@ -1141,7 +1147,7 @@ class NextDeploy < Thor
       end
 
       # Ensure we are back to root
-      Dir.chdir("#{rootFolder}")
+      Dir.chdir(rootFolder)
 
       # preinstall stuffs
       docker_preinstall
@@ -1152,21 +1158,24 @@ class NextDeploy < Thor
       system "grep 'image: ' docker#{@projectname}.yml | sed 's;.* ;;' | while read DIMG; do docker pull $DIMG;done"
 
       # Back to root
-      Dir.chdir("#{rootFolder}")
+      Dir.chdir(rootFolder)
       docker_compose_up
 
       docker_waiting_containers
       # postinstall stuffs
       docker_create_databases
       docker_composersh(true)
+      docker_import(isimport)
       docker_postinstall
-      docker_import if isimport
 
       # execute postinstall nextdeploy task
       if isimport
         Dir.chdir(rootFolder)
         docker_postinstall_script
       end
+
+      docker_updb
+      docker_cc
     end
 
     def docker_create_databases
@@ -1182,7 +1191,7 @@ class NextDeploy < Thor
       @endpoints.each do |ep|
         containername = "ep_#{ep[:path]}_#{@projectname}"
         port = docker_getport(containername)
-        puts "Your #{ep[:path]} endpoint is reached on http://127.0.0.1:#{port}/"
+        puts "Your #{ep[:path]} endpoint is reached on http://#{@@docker_ip}:#{port}/"
       end
     end
 
@@ -1399,8 +1408,7 @@ class NextDeploy < Thor
 
     # Execute NextDeploy datas import step
     #
-    def docker_import
-      rootFolder = Dir.pwd
+    def docker_import(isimport=true)
       ismysql = '0'
       ismongo = '0'
 
@@ -1416,23 +1424,27 @@ class NextDeploy < Thor
 
       @endpoints.each do |ep|
         framework = ep[:frameworkname]
-
         containername = "ep_#{ep[:path]}_#{@projectname}"
-        Dir.chdir("#{rootFolder}/#{ep[:path]}")
-
         login_ftp = @project[:gitpath].gsub(/^.*\//, '')
         password_ftp = @project[:password]
         port = docker_getport(containername)
-        system "docker run --net=#{@projectname}_default -v=#{rootFolder}:/app nextdeploy/import --uri 127.0.0.1:#{port} --path #{ep[:path]} --framework #{framework.downcase} --ftpuser #{login_ftp} --ftppasswd #{password_ftp} --ftphost #{@ftpendpoint} --ismysql #{ismysql} --ismongo #{ismongo} --projectname #{@projectname}"
+        branchname = %x{git rev-parse --abbrev-ref HEAD | tr -d "\n"}
 
-        docker_reset_permissions(containername)
+        # if drupal, execute site-install before import
+        if framework.match(/Drupal/)
+          system "docker pull nextdeploy/drush"
+          email = @user[:email]
+          system "docker run --net=#{@projectname}_default  -v=#{Dir.pwd}/#{ep[:path]}:/app nextdeploy/drush -y site-install --locale=en --db-url=mysqli://root:8to9or1@mysql_#{@projectname}:3306/#{ep[:path]} --account-pass=admin --site-name=#{@projectname} --account-mail=#{email} --site-mail=#{email} standard"
+        end
+
+        if isimport
+          system "docker run --net=#{@projectname}_default -v=#{Dir.pwd}:/app nextdeploy/import  --branch #{branchname} --uri #{@@docker_ip}:#{port} --path #{ep[:path]} --framework #{framework.downcase} --ftpuser #{login_ftp} --ftppasswd #{password_ftp} --ftphost #{@ftpendpoint} --ismysql #{ismysql} --ismongo #{ismongo} --projectname #{@projectname}"
+          docker_reset_permissions(containername)
+        end
       end
-
-      Dir.chdir(rootFolder)
     end
 
     # Execute NextDeploy datas export step
-    #
     #
     def docker_export
       rootFolder = Dir.pwd
@@ -1458,7 +1470,7 @@ class NextDeploy < Thor
 
         login_ftp = @project[:gitpath].gsub(/^.*\//, '')
         password_ftp = @project[:password]
-        system "docker run --net=#{@projectname}_default -v=#{rootFolder}:/app nextdeploy/export --uri 127.0.0.1:#{port} --path #{ep[:path]} --framework #{framework.downcase} --ftpuser #{login_ftp} --ftppasswd #{password_ftp} --ftphost #{@ftpendpoint} --ismysql #{ismysql} --ismongo #{ismongo} --projectname #{@projectname}"
+        system "docker run --net=#{@projectname}_default -v=#{rootFolder}:/app nextdeploy/export --uri #{@@docker_ip}:#{port} --path #{ep[:path]} --framework #{framework.downcase} --ftpuser #{login_ftp} --ftppasswd #{password_ftp} --ftphost #{@ftpendpoint} --ismysql #{ismysql} --ismongo #{ismongo} --projectname #{@projectname}"
       end
 
       Dir.chdir(rootFolder)
@@ -1487,6 +1499,7 @@ class NextDeploy < Thor
       @endpoints.each do |ep|
         framework = ep[:frameworkname]
         containername = "ep_#{ep[:path]}_#{@projectname}"
+        system "mkdir -p #{rootFolder}/#{ep[:path]}"
         Dir.chdir("#{rootFolder}/#{ep[:path]}")
 
         case framework
@@ -1555,10 +1568,10 @@ class NextDeploy < Thor
           port = docker_getport(containername)
           docker_postinstall_sf2("ep_#{ep[:path]}_#{@projectname}", framework.downcase, port)
         when /Drupal/
-          docker_postinstall_drupal("ep_#{ep[:path]}_#{@projectname}", ep[:path])
+          docker_postinstall_drupal(ep[:path])
         when /Wordpress/
           port = docker_getport(containername)
-          docker_postinstall_wp("ep_#{ep[:path]}_#{@projectname}", port)
+          docker_postinstall_wp("ep_#{ep[:path]}_#{@projectname}", ep[:path], port)
         end
 
         docker_reset_permissions(containername)
@@ -1569,17 +1582,15 @@ class NextDeploy < Thor
 
     # Postinstall cmds for drupal project
     #
-    def docker_postinstall_drupal(containername, dbname)
+    def docker_postinstall_drupal(dbname)
       puts "Install Drupal Website"
-      email = @user[:email]
       # get last container version and execute site-install
-      system "docker pull nextdeploy/drush"
-      system "docker run --net=#{@projectname}_default  -v=#{Dir.pwd}:/app nextdeploy/drush -y site-install --locale=en --db-url=mysqli://root:8to9or1@mysql_#{@projectname}:3306/#{dbname} --account-pass=admin --site-name=#{@projectname} --account-mail=#{email} --site-mail=#{email} standard"
+      system "docker run --net=#{@projectname}_default  -v=#{Dir.pwd}:/app nextdeploy/drush -y drush -y cim >/dev/null 2>&1"
     end
 
     # Postinstall cmds for wordpress
     #
-    def docker_postinstall_wp(containername, port)
+    def docker_postinstall_wp(containername, dbname, port)
       # Ugly hack because wordpress docker image
       if Dir.exists?("git-wp-content")
         system "rm -rf wp-content"
@@ -1589,15 +1600,17 @@ class NextDeploy < Thor
       email = @user[:email]
       # get last container version and install wordpress website
       system "docker pull nextdeploy/wp"
-      system "docker run --net=#{@projectname}_default  -v=#{Dir.pwd}:/app nextdeploy/wp core install --url=http://127.0.0.1:#{port}/ --title=#{@projectname} --admin_user=admin --admin_password=admin --admin_email=#{email}"
+      system "docker run --net=#{@projectname}_default  -v=#{Dir.pwd}:/app nextdeploy/wp core install --url=http://#{@@docker_ip}:#{port}/ --title=#{@projectname} --admin_user=admin --admin_password=admin --admin_email=#{email}"
+      system "docker run --net=#{@projectname}_default  -v=#{Dir.pwd}:/app nextdeploy/wp search-replace --all-tables 'ndwpuri' '#{@@docker_ip}:#{port}'"
+      system "docker run --net=#{@projectname}_default  -v=#{Dir.pwd}:/app nextdeploy/wp user update 1 --user_pass=#{@project[:password]}"
     end
 
     # Postinstall cmds for symfony2 project
     #
     def docker_postinstall_sf2(containername, framework, port)
       # change base domain
-      system "perl -pi -e 's/base_hostname:.*$/base_hostname: \'127.0.0.1:#{port}\'/' app/config/parameters.yml"
-      system "perl -pi -e 's/base_domain:.*$/base_domain: \'127.0.0.1:#{port}\'/' app/config/parameters.yml"
+      system "perl -pi -e 's/base_hostname:.*$/base_hostname: \'#{@@docker_ip}:#{port}\'/' app/config/parameters.yml"
+      system "perl -pi -e 's/base_domain:.*$/base_domain: \'#{@@docker_ip}:#{port}\'/' app/config/parameters.yml"
 
       docroot = Dir.pwd
       eppath = containername.sub(/^ep_/, '').sub(/_#{@projectname}$/, '')
@@ -1613,9 +1626,6 @@ class NextDeploy < Thor
 
       puts "Install symfony website"
       # install and configure doctrine database
-      #system "docker run --net=#{@projectname}_default -v=#{docroot}:/var/www/html nextdeploy/#{framework}console doctrine:database:drop --force >/dev/null 2>/dev/null"
-      #system "docker run --net=#{@projectname}_default -v=#{docroot}:/var/www/html nextdeploy/#{framework}console doctrine:database:create"
-      system "docker run --net=#{@projectname}_default -v=#{docroot}:/var/www/html nextdeploy/#{framework}console doctrine:schema:update --force"
       system "docker run --net=#{@projectname}_default -v=#{docroot}:/var/www/html nextdeploy/#{framework}console assets:install --symlink"
     end
 
@@ -1630,13 +1640,13 @@ class NextDeploy < Thor
     #
     def docker_pma
       port = 9381
-      while is_port_open?("127.0.0.1", port) do
+      until port_open?(@@docker_ip, port) do
         port = port + 1
       end
 
       system "docker pull nextdeploy/phpmyadmin"
 
-      puts "\n\nPhpmyadmin, http://127.0.0.1:#{port}/"
+      puts "\n\nPhpmyadmin, http://#{@@docker_ip}:#{port}/"
       puts "Ctrl-c for stop phpmyadmin and get back to terminal prompt"
       exec "docker run --net=#{@projectname}_default -e \"DB_HOST=mysql_#{@projectname}\" -p #{port}:80 nextdeploy/phpmyadmin 1>/dev/null 2>&1"
     end
@@ -1658,9 +1668,12 @@ class NextDeploy < Thor
     def docker_check
       if File.exists?('/usr/local/bin/docker-compose') || File.exists?('/usr/bin/docker-compose')
         if File.exists?('/usr/bin/sw_vers')
-          puts "Please ensure that you have docker >= 1.12"
-          system 'docker version | grep Version | head -n 1'
-          sleep 1
+          unless docker_native?
+            puts "'ndeploy docker' needs 'docker for mac' version instead of 'docker toolbox'"
+            puts "You can download from https://download.docker.com/mac/stable/Docker.dmg"
+            puts "Otherwise, some important functions are not working"
+            sleep 5
+          end
         end
       else
         docker_install
@@ -1670,8 +1683,27 @@ class NextDeploy < Thor
     # Get host ip
     #
     def get_docker_ip
-      enIf = %x{netstat -rn | awk '/^0.0.0.0/ {thif=substr($0,74,10); print thif;} /^default.*UG/ {thif=substr($0,65,10); print thif;}' | head -n 1 | sed "s; ;;g" | tr -d "\n"}
-      %x{/sbin/ifconfig #{enIf} | grep -Eo 'inet (addr:)?([0-9]*\.){3}[0-9]*' | grep -Eo '([0-9]*\.){3}[0-9]*' | grep -v '127.0.0.1' | sed "s; ;;g" | tr -d "\n" | sed "s;inet;;g" | tr -d "\n"}
+      dockerIp = %x{[[ -n "$DOCKER_HOST" ]] && echo "${DOCKER_HOST%:*}" | tr -d "\n"}
+      if dockerIp.empty?
+        enIf = %x{netstat -rn | awk '/^0.0.0.0/ {thif=substr($0,74,10); print thif;} /^default.*UG/ {thif=substr($0,65,10); print thif;}' | head -n 1 | sed "s; ;;g" | tr -d "\n"}
+        dockerIp = %x{/sbin/ifconfig #{enIf} | grep -Eo 'inet (addr:)?([0-9]*\.){3}[0-9]*' | grep -Eo '([0-9]*\.){3}[0-9]*' | grep -v '127.0.0.1' | sed "s; ;;g" | tr -d "\n" | sed "s;inet;;g" | tr -d "\n"}
+      end
+
+      dockerIp.sub('tcp://', '')
+    end
+
+    # Check if docker native
+    #
+    def docker_native?
+      if File.exists?('/usr/bin/sw_vers')
+        if File.exists?('/Applications/Docker.app')
+          true
+        else
+          false
+        end
+      else
+        true
+      end
     end
 
     # Docker install
@@ -1681,7 +1713,7 @@ class NextDeploy < Thor
       puts "Docker Installation ..."
       Dir.chdir('/tmp')
       if File.exists?('/usr/bin/sw_vers')
-        system 'curl -OsSL "https://download.docker.com/mac/beta/Docker.dmg"'
+        system 'curl -OsSL "https://download.docker.com/mac/stable/Docker.dmg"'
         system 'hdiutil mount Docker.dmg'
         system 'sudo cp -rf /Volumes/Docker/Docker.app /Applications/'
         system 'rm -f Docker.dmg'
@@ -1722,21 +1754,21 @@ class NextDeploy < Thor
 
     # Return true if the port is open
     #
-    def is_port_open?(ip, port)
+    def port_open?(ip, port)
       begin
         Timeout::timeout(1) do
           begin
             s = TCPSocket.new(ip, port)
             s.close
-            return true
-          rescue Errno::ECONNREFUSED, Errno::EHOSTUNREACH
             return false
+          rescue Errno::ECONNREFUSED, Errno::EHOSTUNREACH
+            return true
           end
         end
       rescue Timeout::Error
       end
 
-      return false
+      return true
     end
 
     # Puts errors on the output
