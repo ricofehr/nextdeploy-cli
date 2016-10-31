@@ -443,6 +443,71 @@ class NextDeploy < Thor
     end
   end
 
+  # List current active vms
+  #
+  desc "supervise", "Check vms health"
+  long_desc <<-LONGDESC
+    `ndeploy supervise`  Check vms health\n
+  LONGDESC
+  def supervise
+    # check ansible installation
+    unless File.exists?('/usr/bin/ansible') || File.exists?('/usr/local/bin/ansible')
+        error('No ansible binary in the system')
+    end
+
+    init
+
+    # ensure requirements
+    error("No vms for #{@user[:email]}") if @vms.empty?
+
+    # prepare temporary folder for ansible execution
+    Dir.mkdir('/tmp/playbook') unless Dir.exists?('/tmp/playbook')
+    Dir.chdir('/tmp/playbook')
+
+    begin
+      open('ansible.cfg', 'w') do |f|
+        f << "[defaults]\n"
+        f << "hostfile = inventory\n"
+        f << "host_key_checking = False\n"
+      end
+    rescue
+      error("Create supervise file failed")
+    end
+
+    technos = @vms.map{|vm| vm[:technos]}.flatten(1).uniq
+    technos.each do |techno_id|
+      inventory(techno_id)
+
+      resptechno = @conn.get do |req|
+        req.url "/api/v1/technos/#{techno_id}"
+        req.headers = rest_headers
+      end
+
+      playbook = json(resptechno.body)[:techno][:playbook]
+      next if playbook.empty?
+
+      begin
+        open('playbook.yml', 'w') do |f|
+          f << playbook
+        end
+      rescue
+        error("Create playbook file failed")
+      end
+
+      probes = %x{ansible-playbook playbook.yml | grep ndeploy | sed 's;^.*ndeploy:;;' | sed 's;";;'}.split(/\n+/)
+      probes.each do |probe|
+        vm_id = probe.split(':')[0]
+        status = probe.split(':')[1].to_i
+
+        @conn.post do |req|
+          req.url "/api/v1/supervises/#{vm_id}/status"
+          req.headers = rest_headers
+          req.body = { techno_id: techno_id, status: status }.to_json
+        end
+      end
+    end
+  end
+
   # List projects for current user
   #
   desc "projects", "list projects for current user"
@@ -706,7 +771,7 @@ class NextDeploy < Thor
     # define some constants
     #
     def init_constants
-      @@version = "1.7"
+      @@version = "1.8"
       @@remote_cli = "http://cli.nextdeploy.io"
       @@docker_ip = get_docker_ip
     end
@@ -961,7 +1026,6 @@ class NextDeploy < Thor
 
     # Get all sshkeys properties
     #
-    # @params [Array[Integer]] id array
     # No return
     def init_sshkeys
       @ssh_keys = []
@@ -978,7 +1042,6 @@ class NextDeploy < Thor
 
     # Get all brands properties
     #
-    # @params [Array[Integer]] id array
     # No return
     def init_brands
       response = @conn.get do |req|
@@ -991,7 +1054,6 @@ class NextDeploy < Thor
 
     # Get all frameworks properties
     #
-    # @params [Array[Integer]] id array
     # No return
     def init_frameworks
       response = @conn.get do |req|
@@ -1004,7 +1066,6 @@ class NextDeploy < Thor
 
     # Get all systemimages properties
     #
-    # @params [Array[Integer]] id array
     # No return
     def init_systems
       response = @conn.get do |req|
@@ -1013,6 +1074,35 @@ class NextDeploy < Thor
       end
 
       @systems = json(response.body)[:systemimages]
+    end
+
+    # generate inventory file for ansible supervise
+    #
+    def inventory(techno_id=0)
+      init
+
+      # ensure requirements
+      error("No vms for #{@user[:email]}") if @vms.empty?
+
+      begin
+        open('inventory', 'w') do |f|
+          @vms.sort_by {|v| v[:id]}.reverse.each do |vm|
+            matchgroup = 0
+
+            vm[:technos].each do |t|
+              matchgroup = 1 if techno_id == t
+            end
+            next if matchgroup == 0
+
+            # if os is xenial, => python2.7
+            python = '/usr/bin/python'
+            #project = @projects.select { |project| project[:id] == vm[:project] }
+            f << "#{vm[:id]} ansible_ssh_host=#{vm[:floating_ip]} ansible_ssh_user=modem ansible_ssh_private_key_file=~/.ssh/id_rsa ansible_python_interpreter=#{python}"
+          end
+        end
+      rescue
+        error("Create inventory file failed")
+      end
     end
 
     # Stop (and destory if paremeter is true) docker-compose containers
