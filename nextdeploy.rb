@@ -1,5 +1,6 @@
 #!/usr/bin/env ruby
 # encoding: utf-8
+# shell: /bin/bash
 #
 # CommandLine tool for NextDeploy project (http://nextdeploy.io)
 # @author Eric Fehr (ricofehr@nextdeploy.io, @github: ricofehr)
@@ -1773,10 +1774,10 @@ class NextDeploy < Thor
     # Get host ip
     #
     def get_docker_ip
-      dockerIp = %x{[[ -n "$DOCKER_HOST" ]] && echo "${DOCKER_HOST%:*}" | tr -d "\n"}
+      dockerIp = %x{test -n "$DOCKER_HOST" && echo "${DOCKER_HOST}" | sed "s;:.*;;" | tr -d "\n"}
       if dockerIp.empty?
         enIf = %x{netstat -rn | awk '/^0.0.0.0/ {thif=substr($0,74,10); print thif;} /^default.*UG/ {thif=substr($0,65,10); print thif;}' | head -n 1 | sed "s; ;;g" | tr -d "\n"}
-        dockerIp = %x{/sbin/ifconfig #{enIf} | grep -Eo 'inet (addr:)?([0-9]*\.){3}[0-9]*' | grep -Eo '([0-9]*\.){3}[0-9]*' | grep -v '127.0.0.1' | sed "s; ;;g" | tr -d "\n" | sed "s;inet;;g" | tr -d "\n"}
+        dockerIp = %x{/sbin/ifconfig #{enIf} | grep -Eo 'inet (addr:)?([0-9]*\\.){3}[0-9]*' | grep -Eo '([0-9]*\\.){3}[0-9]*' | grep -v '127.0.0.1' | sed "s; ;;g" | tr -d "\n" | sed "s;inet;;g" | tr -d "\n"}
       end
 
       dockerIp.sub('tcp://', '')
