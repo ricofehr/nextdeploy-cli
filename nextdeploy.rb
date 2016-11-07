@@ -397,14 +397,48 @@ class NextDeploy < Thor
     end
 
     # ensure requirements
-    unless vmtodestroy
-      warn("No vm for commit #{commitid}")
+    unless vmtodestroy && vmtodestroy.any?
+      warn("No vm to destroy")
       exit
     end
 
     response = @conn.delete do |req|
       req.url "/api/v1/vms/#{vmtodestroy[:id]}"
       req.headers = rest_headers
+    end
+  end
+
+  # Reboot a vm
+  #
+  desc "reboot [--type=HARD] [idvm]", "Reboot a vm"
+  long_desc <<-LONGDESC
+    `ndeploy reboot [--type=HARD] [idvm]`\n
+    reboot a vm identified by [idvm] (see ndeploy list)\n
+    software reboot by default, hardware reboot if --type=HARD option\n
+  LONGDESC
+  option :type
+  def reboot(idvm=nil)
+    init
+
+    type = (options[:type] && options[:type] != 'SOFT')  ? 'HARD' : 'SOFT'
+    vmtoreboot = @vm
+    if idvm
+      vmtoreboot = @vms.select { |vm| vm[:id].to_i == idvm.to_i && vm[:user] == @user[:id] }[0]
+    end
+
+    # ensure requirements
+    unless vmtoreboot && vmtoreboot.any?
+      warn("No vm to reboot")
+      exit
+    end
+
+    # prepare post request
+    reboot_req = { reboot: {type: type} }
+
+    response = @conn.post do |req|
+      req.url "/api/v1/vms/#{vmtoreboot[:id]}/reboot"
+      req.headers = rest_headers
+      req.body = reboot_req.to_json
     end
   end
 
@@ -600,7 +634,7 @@ class NextDeploy < Thor
     end
 
     # ensure requirement
-    error("No vm for commit #{commitid}") unless vmtossh
+    error("No vm to ssh") unless vmtossh && vmtossh.any?
 
     exec "ssh modem@#{vmtossh[:floating_ip]}"
   end
