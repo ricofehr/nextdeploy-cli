@@ -1131,8 +1131,7 @@ class NextDeploy < Thor
 
             # if os is xenial, => python2.7
             python = '/usr/bin/python'
-            #project = @projects.select { |project| project[:id] == vm[:project] }
-            f << "#{vm[:id]} ansible_ssh_host=#{vm[:floating_ip]} ansible_ssh_user=modem ansible_ssh_private_key_file=~/.ssh/id_rsa ansible_python_interpreter=#{python}"
+            f << "#{vm[:id]} ansible_ssh_host=#{vm[:floating_ip]} ansible_ssh_user=modem ansible_ssh_private_key_file=~/.ssh/id_rsa ansible_python_interpreter=#{python}\n"
           end
         end
       rescue
