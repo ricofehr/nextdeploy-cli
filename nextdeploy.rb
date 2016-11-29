@@ -806,7 +806,7 @@ class NextDeploy < Thor
     # define some constants
     #
     def init_constants
-      @@version = "1.8"
+      @@version = "1.9"
       @@remote_cli = "http://cli.nextdeploy.io"
       @@docker_ip = get_docker_ip
     end
@@ -1535,6 +1535,7 @@ class NextDeploy < Thor
     def docker_import(isimport=true)
       ismysql = '0'
       ismongo = '0'
+      rootFolder = Dir.pwd
 
       # get last container version
       system "docker pull nextdeploy/import"
@@ -1556,9 +1557,17 @@ class NextDeploy < Thor
 
         # if drupal, execute site-install before import
         if framework.match(/Drupal/)
+          profile = ''
+          if Dir.exists?("#{ep[:path]}/profiles")
+            Dir.chdir("#{ep[:path]}/profiles")
+            profile = %x{find . -maxdepth 1 -type d -regex '^.*nextdeploy_.*$' | sed "s;./;;" | tr -d "\n"}
+            Dir.chdir(rootFolder)
+          end
+          profile = 'standard' if profile.empty?
+
           system "docker pull nextdeploy/drush"
           email = @user[:email]
-          system "docker run --net=#{@projectname}_default  -v=#{Dir.pwd}/#{ep[:path]}:/app nextdeploy/drush -y site-install --locale=en --db-url=mysqli://root:8to9or1@mysql_#{@projectname}:3306/#{ep[:path]} --account-pass=admin --site-name=#{@projectname} --account-mail=#{email} --site-mail=#{email} standard"
+          system "docker run --net=#{@projectname}_default  -v=#{Dir.pwd}/#{ep[:path]}:/app nextdeploy/drush -y site-install --locale=en --db-url=mysqli://root:8to9or1@mysql_#{@projectname}:3306/#{ep[:path]} --account-pass=admin --site-name=#{@projectname} --account-mail=#{email} --site-mail=#{email} #{profile}"
         end
 
         if isimport
@@ -1845,6 +1854,8 @@ class NextDeploy < Thor
         exit 0
       else
         system 'wget -qO- https://get.docker.com/ | sudo sh'
+        system 'sudo /bin/bash -c \'curl -L https://github.com/docker/compose/releases/download/1.9.0/docker-compose-`uname -s`-`uname -m` > /usr/local/bin/docker-compose\''
+        system 'sudo chmod +x /usr/local/bin/docker-compose'
       end
       Dir.chdir(currentFolder)
     end
