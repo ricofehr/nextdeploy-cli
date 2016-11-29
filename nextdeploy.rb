@@ -1565,6 +1565,10 @@ class NextDeploy < Thor
           end
           profile = 'standard' if profile.empty?
 
+          # ensure settings are writable
+          system "chmod +w #{ep[:path]}/sites/default"
+          system "test -e #{ep[:path]}/sites/default/settings.php && chmod +w #{ep[:path]}/sites/default/settings.php"
+
           system "docker pull nextdeploy/drush"
           email = @user[:email]
           system "docker run --net=#{@projectname}_default  -v=#{Dir.pwd}/#{ep[:path]}:/app nextdeploy/drush -y site-install --locale=en --db-url=mysqli://root:8to9or1@mysql_#{@projectname}:3306/#{ep[:path]} --account-pass=admin --site-name=#{@projectname} --account-mail=#{email} --site-mail=#{email} #{profile}"
