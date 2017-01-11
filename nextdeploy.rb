@@ -156,7 +156,7 @@ class NextDeploy < Thor
       exit
     end
 
-    branchname = %x{git rev-parse --abbrev-ref HEAD | tr -d "\n"}
+    branchName = %x{git rev-parse --abbrev-ref HEAD | tr -d "\n"}
 
     # prepare post request
     launch_req = { vm: { topic: branchName, project_id: @project[:id], vmsize_id: @project[:vmsizes][0],
@@ -812,7 +812,7 @@ class NextDeploy < Thor
     # define some constants
     #
     def init_constants
-      @@version = "1.9"
+      @@version = "1.9.1"
       @@remote_cli = "http://cli.nextdeploy.io"
       @@docker_ip = get_docker_ip
     end
@@ -1320,7 +1320,7 @@ class NextDeploy < Thor
       @endpoints.each do |ep|
         containername = "ep_#{ep[:path]}_#{@projectname}"
         port = docker_getport(containername)
-        puts "Your #{ep[:path]} endpoint is reached on http://#{@@docker_ip}:#{port}/"
+        puts "Your #{ep[:path]} endpoint is reached on http://#{@@docker_ip}:#{port}/" unless port.nil? || port.empty?
       end
     end
 
