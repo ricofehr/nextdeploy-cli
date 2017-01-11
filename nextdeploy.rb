@@ -156,8 +156,10 @@ class NextDeploy < Thor
       exit
     end
 
+    branchname = %x{git rev-parse --abbrev-ref HEAD | tr -d "\n"}
+
     # prepare post request
-    launch_req = { vm: { project_id: @project[:id], vmsize_id: @project[:vmsizes][0],
+    launch_req = { vm: { topic: branchName, project_id: @project[:id], vmsize_id: @project[:vmsizes][0],
                          user_id: @user[:id], systemimage_id: @project[:systemimages][0],
                          technos: @project[:technos], is_auth: true, is_prod: false, is_cached: false,
                          is_backup: false, is_ci: false, is_ht: @project[:is_ht], layout: @user[:layout],
@@ -371,7 +373,11 @@ class NextDeploy < Thor
     error("Branch #{branch} not found") if !@branche
 
     # prepare post request
-    launch_req = { vm: { project_id: @project[:id], vmsize_id: @project[:vmsizes][0], user_id: @user[:id], technos: @project[:technos], systemimage_id: @project[:systemimages][0], is_auth: true, is_prod: false, is_cached: false, is_backup: false, is_ci: false, is_ht: @project[:is_ht], layout: @user[:layout], htlogin: @project[:login], htpassword: @project[:password], commit_id: "#{@branche[:commits][0]}" } }
+    launch_req = { vm: { topic: branch, project_id: @project[:id], vmsize_id: @project[:vmsizes][0],
+                         user_id: @user[:id], technos: @project[:technos], systemimage_id: @project[:systemimages][0],
+                         is_auth: true, is_prod: false, is_cached: false, is_backup: false, is_ci: false,
+                         is_ht: @project[:is_ht], layout: @user[:layout], htlogin: @project[:login],
+                         htpassword: @project[:password], commit_id: "#{@branche[:commits][0]}" } }
 
     response = @conn.post do |req|
       req.url "/api/v1/vms/short"
@@ -402,7 +408,7 @@ class NextDeploy < Thor
       exit
     end
 
-    response = @conn.delete do |req|
+    @conn.delete do |req|
       req.url "/api/v1/vms/#{vmtodestroy[:id]}"
       req.headers = rest_headers
     end
@@ -435,7 +441,7 @@ class NextDeploy < Thor
     # prepare post request
     reboot_req = { reboot: {type: type} }
 
-    response = @conn.post do |req|
+    @conn.post do |req|
       req.url "/api/v1/vms/#{vmtoreboot[:id]}/reboot"
       req.headers = rest_headers
       req.body = reboot_req.to_json
@@ -460,7 +466,7 @@ class NextDeploy < Thor
 
     nblines = 0
     @vms.sort_by {|v| v[:id]}.reverse.each do |vm|
-      project = @projects.select { |project| project[:id] == vm[:project] }
+      project = @projects.select { |proj| proj[:id] == vm[:project] }
       status = "RUNNING"
       # put url if vm is running
       url = ", #{vm[:name]}"
@@ -609,7 +615,7 @@ class NextDeploy < Thor
     # prepare post request
     sshkey_req = { sshkey: { user_id: @user[:id], key: key, name: keyname } }
 
-    response = @conn.post do |req|
+    @conn.post do |req|
       req.url "/api/v1/sshkeys"
       req.headers = rest_headers
       req.body = sshkey_req.to_json
@@ -943,7 +949,7 @@ class NextDeploy < Thor
           req.headers = rest_headers
         end
 
-        techno = json(resptechno.body)[:techno]
+        json(resptechno.body)[:techno]
       end
     end
 
@@ -1197,7 +1203,7 @@ class NextDeploy < Thor
         containername = "ep_#{ep[:path]}_#{@projectname}"
         envvars = ep[:envvars].split(' ').map { |ev| "    #{ev.sub('=',': ')}" }.join("\n")
         dockercompose = ep[:dockercompose]
-        next if dockercompose.empty?
+        next if dockercompose.nil? || dockercompose.empty?
         containerPorts["#{containername}"] = port
         # replace container name, docroot, envvars and ports
         dockercompose.gsub!('%%CONTAINERNAME%%', "#{containername}")
@@ -1303,7 +1309,6 @@ class NextDeploy < Thor
     end
 
     def docker_create_databases
-      containername = "mysql_#{@projectname}"
       @endpoints.each do |ep|
         # ensure database is well created at this step, .... ugly !!!
         system "docker exec -t mysql_#{@projectname} /usr/bin/mysql -u root -p8to9or1 -e 'create database #{ep[:path]} character set=utf8 collate=utf8_unicode_ci' >/dev/null 2>&1"
@@ -1329,7 +1334,6 @@ class NextDeploy < Thor
 
       index = 0
       @endpoints.each do |ep|
-        framework = ep[:frameworkname]
         containername = "ep_#{ep[:path]}_#{@projectname}"
         sentence << "[#{index}] - #{containername} \n"
         choices << "#{index}"
@@ -1342,7 +1346,6 @@ class NextDeploy < Thor
       index = 0
       @endpoints.each do |ep|
         if choice.to_i == index
-          framework = ep[:frameworkname]
           containername = "ep_#{ep[:path]}_#{@projectname}"
           exec "docker exec -i -t #{containername} /bin/bash"
         end
@@ -1361,7 +1364,6 @@ class NextDeploy < Thor
 
       index = 0
       @endpoints.each do |ep|
-        framework = ep[:frameworkname]
         containername = "ep_#{ep[:path]}_#{@projectname}"
         sentence << "[#{index}] - #{containername} \n"
         choices << "#{index}"
@@ -1437,7 +1439,6 @@ class NextDeploy < Thor
       # execute updb cmds for each endpoints
       @endpoints.each do |ep|
         framework = ep[:frameworkname]
-        containername = "ep_#{ep[:path]}_#{@projectname}"
         Dir.chdir("#{rootFolder}/#{ep[:path]}")
 
         # execute framework specific updb
@@ -1635,7 +1636,6 @@ class NextDeploy < Thor
       # execute preinstall cmds
       @endpoints.each do |ep|
         framework = ep[:frameworkname]
-        containername = "ep_#{ep[:path]}_#{@projectname}"
         system "mkdir -p #{rootFolder}/#{ep[:path]}"
         Dir.chdir("#{rootFolder}/#{ep[:path]}")
 
@@ -1750,13 +1750,12 @@ class NextDeploy < Thor
       system "perl -pi -e 's/base_domain:.*$/base_domain: \'#{@@docker_ip}:#{port}\'/' app/config/parameters.yml"
 
       docroot = Dir.pwd
-      eppath = containername.sub(/^ep_/, '').sub(/_#{@projectname}$/, '')
 
       # get last container version
       system "docker pull nextdeploy/#{framework}console"
 
       # Ensure that the first composer has finish before launch symfony commands
-      until File.exists?("app/bootstrap.php.cache") do
+      until File.exists?("app/bootstrap.php.cache") || File.exists?("var/bootstrap.php.cache") do
         puts "Waiting composer finished his work ....."
         sleep 5
       end
