@@ -515,7 +515,8 @@ class NextDeploy < Thor
       error("Create supervise file failed")
     end
 
-    technos = @vms.map{|vm| vm[:technos]}.flatten(1).uniq
+    vms_run = @vms.select { |vm| vm[:status].to_i > 1 }
+    technos = vms_run.map{|vm| vm[:technos]}.flatten(1).uniq
     technos.each do |techno_id|
       inventory(techno_id)
 
@@ -812,7 +813,7 @@ class NextDeploy < Thor
     # define some constants
     #
     def init_constants
-      @@version = "1.9.1"
+      @@version = "1.10"
       @@remote_cli = "http://cli.nextdeploy.io"
       @@docker_ip = get_docker_ip
     end
