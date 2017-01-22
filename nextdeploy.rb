@@ -1126,9 +1126,12 @@ class NextDeploy < Thor
       # ensure requirements
       error("No vms for #{@user[:email]}") if @vms.empty?
 
+      # filter: only running vm
+      vms_run = @vms.select { |vm| vm[:status].to_i > 1 }
+
       begin
         open('inventory', 'w') do |f|
-          @vms.sort_by {|v| v[:id]}.reverse.each do |vm|
+          vms_run.sort_by {|v| v[:id]}.reverse.each do |vm|
             matchgroup = 0
 
             vm[:technos].each do |t|
