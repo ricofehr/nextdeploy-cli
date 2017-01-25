@@ -1188,6 +1188,7 @@ class NextDeploy < Thor
     def docker_compose_gen
       rootFolder = Dir.pwd
       isimport = true
+      docrootfinal = ''
       composerLines = []
       containerPorts = {}
 
@@ -1226,6 +1227,13 @@ class NextDeploy < Thor
         until port_open?(@@docker_ip, port) do
           port = port + 1
         end
+
+        # create docroot folder if dont already exists
+        docrootfinal = "#{Dir.pwd}/#{ep[:path]}"
+        if File.symlink?("#{Dir.pwd}/#{ep[:path]}")
+          docrootfinal = File.readlink("#{Dir.pwd}/#{ep[:path]}")
+        end
+        system("mkdir -p #{docrootfinal}")
       end
 
       # replace endpoints host into composer template
@@ -1572,7 +1580,7 @@ class NextDeploy < Thor
 
           # ensure settings are writable
           system "chmod +w #{ep[:path]}/sites/default"
-          system "test -e #{ep[:path]}/sites/default/settings.php && chmod +w #{ep[:path]}/sites/default/settings.php"
+          system "rm -f #{ep[:path]}/sites/default/settings.php"
 
           system "docker pull nextdeploy/drush"
           email = @user[:email]
@@ -1580,7 +1588,17 @@ class NextDeploy < Thor
         end
 
         if isimport
-          system "docker run --net=#{@projectname}_default -v=#{Dir.pwd}:/app nextdeploy/import  --branch #{branchname} --uri #{@@docker_ip}:#{port} --path #{ep[:path]} --framework #{framework.downcase} --ftpuser #{login_ftp} --ftppasswd #{password_ftp} --ftphost #{@ftpendpoint} --ismysql #{ismysql} --ismongo #{ismongo} --projectname #{@projectname}"
+          system "docker run --net=#{@projectname}_default -v=#{Dir.pwd}:/app nextdeploy/import  --path #{ep[:path]} --framework #{framework} --branch #{branchname} --uri #{@@docker_ip}:#{port} --path #{ep[:path]} --framework #{framework.downcase} --ftpuser #{login_ftp} --ftppasswd #{password_ftp} --ftphost #{@ftpendpoint} --ismysql #{ismysql} --ismongo #{ismongo} --projectname #{@projectname}"
+
+          # for wp project, need to consolidate dump
+          case framework
+          when /Wordpress/
+            Dir.chdir("#{rootFolder}/#{ep[:path]}")
+            port = docker_getport("ep_#{ep[:path]}_#{@projectname}")
+            docker_postinstall_wp("ep_#{ep[:path]}_#{@projectname}", ep[:path], port)
+            Dir.chdir(rootFolder)
+          end
+
           docker_reset_permissions(containername)
         end
       end
