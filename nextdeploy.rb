@@ -162,7 +162,7 @@ class NextDeploy < Thor
     launch_req = { vm: { topic: branchName, project_id: @project[:id], vmsize_id: @project[:vmsizes][0],
                          user_id: @user[:id], systemimage_id: @project[:systemimages][0],
                          technos: @project[:technos], is_auth: true, is_prod: false, is_cached: false,
-                         is_backup: false, is_ci: false, is_ht: @project[:is_ht], layout: @user[:layout],
+                         is_backup: false, is_ci: false, is_ro: false, is_ht: @project[:is_ht], layout: @user[:layout],
                          htlogin: @project[:login], htpassword: @project[:password], commit_id: commitid } }
 
     response = @conn.post do |req|
@@ -376,7 +376,7 @@ class NextDeploy < Thor
     launch_req = { vm: { topic: branch, project_id: @project[:id], vmsize_id: @project[:vmsizes][0],
                          user_id: @user[:id], technos: @project[:technos], systemimage_id: @project[:systemimages][0],
                          is_auth: true, is_prod: false, is_cached: false, is_backup: false, is_ci: false,
-                         is_ht: @project[:is_ht], layout: @user[:layout], htlogin: @project[:login],
+                         is_ht: @project[:is_ht], is_ro: false, layout: @user[:layout], htlogin: @project[:login],
                          htpassword: @project[:password], commit_id: "#{@branche[:commits][0]}" } }
 
     response = @conn.post do |req|
