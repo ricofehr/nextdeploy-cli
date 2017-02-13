@@ -1696,6 +1696,12 @@ class NextDeploy < Thor
           system 'perl -pi -e "s/database_password:.*$/database_password: 8to9or1/" parameters.yml'
         end
 
+        if /mongo/.match(containername)
+          system "perl -pi -e 's;mongodb_server:.*$;mongodb_server: mongodb://localhost:27017;' parameters.yml"
+          system "perl -pi -e 's/mongodb_default_name:.*$/mongodb_default_name: #{dbname}/' parameters.yml"
+          system "perl -pi -e 's/mongodb_database:.*$/mongodb_database: #{dbname}/' parameters.yml"
+        end
+
         system "perl -pi -e 's/es_host:.*$/es_host: #{containername}/' parameters.yml" if /elasticsearch/.match(containername)
         system "perl -pi -e 's/amqp_host:.*$/amqp_host: #{containername}/' parameters.yml" if /rabbitmq/.match(containername)
         system "perl -pi -e 's;kibana_url:.*$;kibana_url: \'http://#{containername}/app/kibana\';' parameters.yml" if /kibana/.match(containername)
