@@ -1,9 +1,9 @@
 GEM
   remote: https://rubygems.org/
   specs:
-    activesupport (4.2.3)
+    activesupport (4.2.6)
       i18n (~> 0.7)
-      json (~> 1.8, >= 1.8.3)
+      json (~> 1.7, >= 1.7.7)
       minitest (~> 5.1)
       thread_safe (~> 0.3, >= 0.3.4)
       tzinfo (~> 1.1)
@@ -23,9 +23,9 @@ PLATFORMS
   ruby
 
 DEPENDENCIES
-  activesupport
+  activesupport (~> 4.2.6)
   faraday
-  json (~> 1.8.3)
+  json (~> 1.7.7)
   net-http-persistent
   thor (~> 0.19.1)
 
