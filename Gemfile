@@ -1,14 +1,14 @@
 source 'https://rubygems.org'
 
 # thor gem
-gem 'thor', '~> 0.19.1'
+gem 'thor', '~> 0.19.4'
 
 # json gem
-gem 'json', '~> 1.7.7'
+gem 'json', '~> 1.8.6'
 
 # activesupport gem
-gem 'activesupport', '~> 4.2.6'
+gem 'activesupport', '~> 4.2.8'
 
 # faraday restful library
 gem 'faraday'
-gem 'net-http-persistent'
+gem 'net-http-persistent', '2.9.4'

@@ -607,7 +607,7 @@ class NextDeploy < Thor
     # check if this key is already associated to this user
     @ssh_keys.each do |sshkey|
       # normalize the two keys string and compre them.
-      # HACK: ugly line :(
+      # HACK ugly line :(
       if key.gsub(/^ssh-rsa /, '').gsub(/ .*$/, '').eql? sshkey[:key].gsub(/^ssh-rsa /, '').gsub(/ .*$/, '')
         error("Your current ssh key is already associated to your user")
       end
@@ -832,7 +832,7 @@ class NextDeploy < Thor
       elsif File.exists?("#{Dir.home}/.nextdeploy.conf")
         fp = File.open("#{Dir.home}/.nextdeploy.conf", 'r')
       else
-        if ! File.exists?('/etc/nextdeploy.conf')
+        if !File.exists?('/etc/nextdeploy.conf')
           error('no nextdeploy.conf or /etc/nextdeploy.conf')
         end
         fp = File.open('/etc/nextdeploy.conf', 'r')
@@ -901,7 +901,7 @@ class NextDeploy < Thor
     # Get current project, technos and endpoints follow the gitpath value
     #
     # No params
-    # @return [Array[String]] json output for a project
+    # @return [Hash{String => String}] json output for a project
     def get_project
       gitp = gitpath
 
@@ -957,7 +957,7 @@ class NextDeploy < Thor
     # Get branch object
     #
     # No params
-    # @return [Array[String]] json output for a branch
+    # @return [Hash{String => String}] json output for a branch
     def get_branche(branch='master')
 
       response = @conn.get do |req|
@@ -976,7 +976,7 @@ class NextDeploy < Thor
     # get he vm for current commit
     #
     # No params
-    # @return [Array[String]] json output for a vm
+    # @return [Hash{String => String}] json output for a vm
     def get_vm
 
       # if we are not into git project, return
@@ -1010,7 +1010,7 @@ class NextDeploy < Thor
     #
     # @param [String] email of the user
     # @param [String] password of the user
-    # No return
+    # @return [Hash{String => String}] the user json
     def authuser(email, password)
       auth_req = { user: { email: email, password: password } }
 
@@ -1022,13 +1022,13 @@ class NextDeploy < Thor
          req.body = auth_req.to_json
         end
       rescue => e
-        warn("Issue during authentification, bad email or password ?")
+        warn("Issue during authentification, wrong email or wrong password ?")
         warn(e)
         exit
       end
 
       json_auth = json(response.body)
-      if ! json_auth[:success].nil? && json_auth[:success] == false
+      if !json_auth[:success].nil? && json_auth[:success] == false
         warn(json_auth[:message])
         exit
       end
@@ -1038,8 +1038,6 @@ class NextDeploy < Thor
 
     # Get all projects properties
     #
-    # No param
-    # No return
     def init_projects
       @projects = []
 
@@ -1053,8 +1051,6 @@ class NextDeploy < Thor
 
     # Get all vms properties
     #
-    # No params
-    # No return
     def init_vms
       @vms = []
 
@@ -1068,7 +1064,6 @@ class NextDeploy < Thor
 
     # Get all sshkeys properties
     #
-    # No return
     def init_sshkeys
       @ssh_keys = []
       @ssh_key = { name: 'nosshkey' }
@@ -1084,7 +1079,6 @@ class NextDeploy < Thor
 
     # Get all brands properties
     #
-    # No return
     def init_brands
       response = @conn.get do |req|
         req.url "/api/v1/brands"
@@ -1096,7 +1090,6 @@ class NextDeploy < Thor
 
     # Get all frameworks properties
     #
-    # No return
     def init_frameworks
       response = @conn.get do |req|
         req.url "/api/v1/frameworks"
@@ -1108,7 +1101,6 @@ class NextDeploy < Thor
 
     # Get all systemimages properties
     #
-    # No return
     def init_systems
       response = @conn.get do |req|
         req.url "/api/v1/systemimages"
@@ -1120,6 +1112,7 @@ class NextDeploy < Thor
 
     # generate inventory file for ansible supervise
     #
+    # @param [Number] techno_id
     def inventory(techno_id=0)
       init
 
@@ -1151,7 +1144,7 @@ class NextDeploy < Thor
 
     # Stop (and destory if paremeter is true) docker-compose containers
     #
-    # @params [Boolean] isdestroy
+    # @param [Boolean] isdestroy
     def docker_compose_stop(isdestroy)
       rootFolder = Dir.pwd
       # clean old containers
@@ -1365,7 +1358,7 @@ class NextDeploy < Thor
       end
     end
 
-    # Ssh to conainer
+    # Execute a cms console cmd into container
     #
     def docker_console
       index = 0
@@ -1885,7 +1878,7 @@ class NextDeploy < Thor
         exit 0
       else
         system 'wget -qO- https://get.docker.com/ | sudo sh'
-        system 'sudo /bin/bash -c \'curl -L https://github.com/docker/compose/releases/download/1.9.0/docker-compose-`uname -s`-`uname -m` > /usr/local/bin/docker-compose\''
+        system 'sudo /bin/bash -c \'curl -L https://github.com/docker/compose/releases/download/1.14.0/docker-compose-`uname -s`-`uname -m` > /usr/local/bin/docker-compose\''
         system 'sudo chmod +x /usr/local/bin/docker-compose'
       end
       Dir.chdir(currentFolder)
@@ -1901,7 +1894,7 @@ class NextDeploy < Thor
     # Helper function for parse json call
     #
     # @param body [String] the json on input
-    # @return [Hash] the json hashed with symbol
+    # @return [Hash{String => String}] the json hashed with symbol
     def json(body)
       JSON.parse(body, symbolize_names: true)
     end
