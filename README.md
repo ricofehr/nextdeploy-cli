@@ -4,6 +4,8 @@ cli commands application for [nextdeploy project](https://github.com/ricofehr/ne
 
 A client developed in Ruby allows communication with the rest api via the command line.
 
+[![NextDeploy-CLI](https://img.youtube.com/vi/31LU0D2ZyI0/0.jpg)](https://www.youtube.com/watch?v=31LU0D2ZyI0)
+
 ## Settings file
 
 A small configuration file is related to the script and must contain the email / password of the user.
@@ -65,6 +67,7 @@ ndeploy version                                     # print current version of n
 ```
 
 More specificaly, the "ndeploy docker" subcommand has lot of options available
+
 ```
 Usage:
   ndeploy docker
