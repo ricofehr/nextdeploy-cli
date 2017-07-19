@@ -3,7 +3,7 @@
 # shell: /bin/bash
 #
 # CommandLine tool for NextDeploy project (http://nextdeploy.io)
-# @author Eric Fehr (ricofehr@nextdeploy.io, @github: ricofehr)
+# @author Eric Fehr (ricofehr@nextdeploy.io, github: ricofehr)
 
 require 'thor'
 require 'faraday'
@@ -829,13 +829,20 @@ class NextDeploy < Thor
       # Open setting file
       if File.exists?('nextdeploy.conf')
         fp = File.open('nextdeploy.conf', 'r')
+      elsif File.exists?('tmp/nextdeploy.conf')
+        fp = File.open('tmp/nextdeploy.conf', 'r')
+      elsif File.exists?('/nextdeploy/nextdeploy.conf')
+        fp = File.open('/nextdeploy/nextdeploy.conf', 'r')
+      elsif File.exists?("#{Dir.home}/.nextdeploy/nextdeploy.conf")
+        fp = File.open("#{Dir.home}/.nextdeploy/nextdeploy.conf", 'r')
       elsif File.exists?("#{Dir.home}/.nextdeploy.conf")
         fp = File.open("#{Dir.home}/.nextdeploy.conf", 'r')
-      else
-        if !File.exists?('/etc/nextdeploy.conf')
-          error('no nextdeploy.conf or /etc/nextdeploy.conf')
-        end
+      elsif File.exists?('/etc/nextdeploy/nextdeploy.conf')
+        fp = File.open('/etc/nextdeploy/nextdeploy.conf', 'r')
+      elsif File.exists?('/etc/nextdeploy.conf')
         fp = File.open('/etc/nextdeploy.conf', 'r')
+      else
+        error('no nextdeploy.conf or /etc/nextdeploy.conf')
       end
 
       # Get properties

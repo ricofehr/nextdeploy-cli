@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # Install instruction for cli cmd
-# @author Eric Fehr (ricofehr@nextdeploy.io, @github: ricofehr)
+# @author Eric Fehr (ricofehr@nextdeploy.io, github: ricofehr)
 
 # flag who decide if it's the first install
 NEWINSTALL=1
