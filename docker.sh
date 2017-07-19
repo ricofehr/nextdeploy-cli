@@ -25,4 +25,4 @@ if [[ ! -f /tmp/.ndeploy ]]; then
 fi
 
 # Launch the container
-docker run --rm -v ~/.ssh:/var/www/.ssh -v ~/.nextdeploy:/nextdeploy -v $PWD:/app -t -i nextdeploy/ndeploy $*
+docker run --rm -v ~/.ssh:/home/app/.ssh -v ~/.nextdeploy:/nextdeploy -v $PWD:/app -t -i nextdeploy/ndeploy $*
