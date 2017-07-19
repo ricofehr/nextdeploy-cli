@@ -7,7 +7,7 @@ A client developed in Ruby allows communication with the rest api via the comman
 ## Settings file
 
 A small configuration file is related to the script and must contain the email / password of the user.
-An example of /etc/nextdeploy.conf
+An example of /etc/nextdeploy/nextdeploy.conf
 ```
 email: userp@os.nextdeploy
 password: word123123
@@ -17,6 +17,26 @@ endpoint: nextdeploy.local
 ## Install
 
 Please execute "install.sh" bash script.
+
+## Docker Image
+
+A Docker Image with last ndeploy version is ready to use.
+Assume that the setting folder is /etc/nextdeploy on the host (change it if different).
+```
+docker run --rm -v ~/.ssh:/var/www/.ssh -v /etc/nextdeploy:/nextdeploy -v $PWD:/app -t -i nextdeploy/ndeploy
+```
+
+For daily use, it's better to have a generic script
+```
+# get generic script from this github repository
+wget -q "https://raw.githubusercontent.com/ricofehr/nextdeploy-cli/master/docker.sh" -O /usr/local/bin/ndeploy
+
+# edit the script and change USERNAME / PASSWORD / ENDPOINT values
+vi /usr/local/bin/ndeploy
+
+# you can use the cli cmd everywhere in your system
+ndeploy
+```
 
 ## Commands
 
