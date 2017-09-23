@@ -508,7 +508,6 @@ class NextDeploy < Thor
     begin
       open('ansible.cfg', 'w') do |f|
         f << "[defaults]\n"
-        f << "hostfile = inventory\n"
         f << "host_key_checking = False\n"
       end
     rescue
@@ -536,7 +535,7 @@ class NextDeploy < Thor
         error("Create playbook file failed")
       end
 
-      probes = %x{ansible-playbook playbook.yml | grep ndeploy | sed 's;^.*ndeploy:;;' | sed 's;";;'}.split(/\n+/)
+      probes = %x{ansible-playbook -i inventory playbook.yml | grep ndeploy | sed 's;^.*ndeploy:;;' | sed 's;";;'}.split(/\n+/)
       probes.each do |probe|
         vm_id = probe.split(':')[0]
         status = probe.split(':')[1].to_i
