@@ -812,7 +812,7 @@ class NextDeploy < Thor
     # define some constants
     #
     def init_constants
-      @@version = "1.10"
+      @@version = "1.12"
       @@remote_cli = "http://cli.nextdeploy.io"
       @@docker_ip = get_docker_ip
     end
